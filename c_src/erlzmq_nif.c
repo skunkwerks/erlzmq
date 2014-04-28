@@ -121,6 +121,8 @@ NIF(erlzmq_nif_send);
 NIF(erlzmq_nif_recv);
 NIF(erlzmq_nif_close);
 NIF(erlzmq_nif_term);
+NIF(erlzmq_nif_ctx_get);
+NIF(erlzmq_nif_ctx_set);
 NIF(erlzmq_nif_version);
 
 static void * polling_thread(void * handle);
@@ -140,6 +142,8 @@ static ErlNifFunc nif_funcs[] =
   {"recv", 2, erlzmq_nif_recv},
   {"close", 1, erlzmq_nif_close},
   {"term", 1, erlzmq_nif_term},
+  {"ctx_get", 2, erlzmq_nif_ctx_get},
+  {"ctx_set", 3, erlzmq_nif_ctx_set},
   {"version", 0, erlzmq_nif_version}
 };
 
@@ -1088,6 +1092,125 @@ NIF(erlzmq_nif_term)
     // thread has a reference to the context, decrement here
     enif_release_resource(context);
     return enif_make_copy(env, req.data.term.ref);
+  }
+}
+
+NIF(erlzmq_nif_ctx_set)
+{
+  erlzmq_context_t * context;
+
+  if (! enif_get_resource(env, argv[0], erlzmq_nif_resource_context,
+                          (void **) &context)) {
+    return enif_make_badarg(env);
+  }
+  int option_name;
+
+  if (! enif_get_int(env, argv[1], &option_name)) {
+    return enif_make_badarg(env);
+  }
+
+  int value_int;
+  switch (option_name) {
+    // int
+    case ZMQ_IO_THREADS:
+    case ZMQ_MAX_SOCKETS:
+    case ZMQ_IPV6:
+    #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 1
+    case ZMQ_THREAD_SCHED_POLICY:
+    case ZMQ_THREAD_PRIORITY:
+    #endif
+    #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 2
+    case ZMQ_BLOCKY:
+    case ZMQ_MAX_MSGSZ:
+    #endif
+    #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 3
+    case ZMQ_THREAD_AFFINITY_CPU_ADD:
+    case ZMQ_THREAD_AFFINITY_CPU_REMOVE:
+    case ZMQ_THREAD_NAME_PREFIX:
+    #endif
+      if (! enif_get_int(env, argv[2], &value_int)) {
+        return enif_make_badarg(env);
+      }
+      break;
+    default:
+      return enif_make_badarg(env);
+  }
+
+  if (! context->mutex) {
+    return return_zmq_errno(env, ETERM);
+  }
+  enif_mutex_lock(context->mutex);
+  if (! context->context_zmq) {
+    if (context->mutex) {
+      enif_mutex_unlock(context->mutex);
+    }
+    return return_zmq_errno(env, ETERM);
+  }
+  else if (zmq_ctx_set(context->context_zmq, option_name,
+                          value_int)) {
+    enif_mutex_unlock(context->mutex);
+    return return_zmq_errno(env, zmq_errno());
+  }
+  else {
+    enif_mutex_unlock(context->mutex);
+    return enif_make_atom(env, "ok");
+  }
+}
+
+NIF(erlzmq_nif_ctx_get)
+{
+  erlzmq_context_t * context;
+  int option_name;
+
+  if (! enif_get_resource(env, argv[0], erlzmq_nif_resource_context,
+                          (void **) &context)) {
+    return enif_make_badarg(env);
+  }
+
+  if (! enif_get_int(env, argv[1], &option_name)) {
+    return enif_make_badarg(env);
+  }
+
+  int value_int;
+  switch(option_name) {
+    // int
+    case ZMQ_IO_THREADS:
+    case ZMQ_MAX_SOCKETS:
+    case ZMQ_IPV6:
+    #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 1
+    case ZMQ_SOCKET_LIMIT:
+    case ZMQ_THREAD_SCHED_POLICY:
+    #endif
+    #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 2
+    case ZMQ_MAX_MSGSZ:
+    case ZMQ_BLOCKY:
+    #endif
+    #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 3
+    case ZMQ_THREAD_NAME_PREFIX:
+    case ZMQ_MSG_T_SIZE:
+    #endif
+      if (! context->mutex) {
+        return return_zmq_errno(env, ETERM);
+      }
+      enif_mutex_lock(context->mutex);
+      if (! context->context_zmq) {
+        if (context->mutex) {
+          enif_mutex_unlock(context->mutex);
+        }
+        return return_zmq_errno(env, ETERM);
+      }
+      else {
+        value_int = zmq_ctx_get(context->context_zmq, option_name);
+        if (value_int == -1) {
+          enif_mutex_unlock(context->mutex);
+          return return_zmq_errno(env, zmq_errno());
+        }
+      }
+      enif_mutex_unlock(context->mutex);
+      return enif_make_tuple2(env, enif_make_atom(env, "ok"),
+                              enif_make_int(env, value_int));
+    default:
+      return enif_make_badarg(env);
   }
 }
 

@@ -43,6 +43,8 @@
          close/2,
          term/1,
          term/2,
+         ctx_get/2,
+         ctx_set/3,
          version/0]).
 -export_type([erlzmq_socket/0, erlzmq_context/0]).
 
@@ -380,6 +382,31 @@ term(Context, Timeout) ->
             Result
     end.
 
+%% @doc Get an {@link erlzmq_ctxopt(). option} associated with a context.
+%% <br />
+%% <i>For more information see
+%% <a href="http://api.zeromq.org/master:zmq-ctx-get">zmq_ctx_get</a>.</i>
+%% @end
+-spec ctx_get(Context :: erlzmq_context(),
+                 Name :: erlzmq_ctxopt()) ->
+    {ok, integer()} |
+    erlzmq_error().
+ctx_get(Context, Name) when is_atom(Name) ->
+    erlzmq_nif:ctx_get(Context, option_name(Name)).
+
+%% @doc Set an {@link erlzmq_ctxopt(). option} associated with an option.
+%% <br />
+%% <i>For more information see
+%% <a href="http://api.zeromq.org/master:zmq-ctx-set">zmq_ctx_set</a>.</i>
+%% @end
+-spec ctx_set(Context :: erlzmq_context(),
+                 Name :: erlzmq_ctxopt(),
+                 integer()) ->
+    ok |
+    erlzmq_error().
+ctx_set(Context, Name, Value) when is_integer(Value), is_atom(Name) ->
+    erlzmq_nif:ctx_set(Context, option_name(Name), Value).
+
 %% @doc Returns the 0MQ library version.
 %% @end
 -spec version() -> {integer(), integer(), integer()}.
@@ -432,7 +459,7 @@ sendrecv_flags([dontwait|Rest]) ->
 sendrecv_flags([sndmore|Rest]) ->
     ?'ZMQ_SNDMORE' bor sendrecv_flags(Rest).
 
--spec option_name(Name :: erlzmq_sockopt()) ->
+-spec option_name(Name :: erlzmq_sockopt() | erlzmq_ctxopt()) ->
     integer().
 
 option_name(affinity) -> ?'ZMQ_AFFINITY';
@@ -490,8 +517,8 @@ option_name(gssapi_plaintext) -> ?'ZMQ_GSSAPI_PLAINTEXT';
 option_name(handshake_ivl) -> ?'ZMQ_HANDSHAKE_IVL';
 option_name(socks_proxy) -> ?'ZMQ_SOCKS_PROXY';
 option_name(xpub_nodrop) -> ?'ZMQ_XPUB_NODROP';
-% context option
-% option_name(blocky) -> ?'ZMQ_BLOCKY';
+% blocky is a context option but for some reason is defined along with socket options in zmq.h
+option_name(blocky) -> ?'ZMQ_BLOCKY';
 option_name(xpub_manual) -> ?'ZMQ_XPUB_MANUAL';
 option_name(xpub_welcome_msg) -> ?'ZMQ_XPUB_WELCOME_MSG';
 option_name(stream_notify) -> ?'ZMQ_STREAM_NOTIFY';
@@ -520,4 +547,18 @@ option_name(delay_attach_on_connect) -> ?'ZMQ_DELAY_ATTACH_ON_CONNECT';
 option_name(noblock) -> ?'ZMQ_NOBLOCK';
 option_name(fail_unroutable) -> ?'ZMQ_FAIL_UNROUTABLE';
 option_name(router_behavior) -> ?'ZMQ_ROUTER_BEHAVIOR';
-option_name(identity) -> ?'ZMQ_IDENTITY'.
+option_name(identity) -> ?'ZMQ_IDENTITY';
+
+% context options
+option_name(io_threads) -> ?'ZMQ_IO_THREADS';
+option_name(max_sockets) -> ?'ZMQ_MAX_SOCKETS';
+option_name(socket_limit) -> ?'ZMQ_SOCKET_LIMIT';
+option_name(thread_priority) -> ?'ZMQ_THREAD_PRIORITY';
+option_name(thread_sched_policy) -> ?'ZMQ_THREAD_SCHED_POLICY';
+option_name(max_msgsz) -> ?'ZMQ_MAX_MSGSZ';
+option_name(msg_t_size) -> ?'ZMQ_MSG_T_SIZE';
+option_name(thread_affinity_cpu_add) -> ?'ZMQ_THREAD_AFFINITY_CPU_ADD';
+option_name(thread_affinity_cpu_remove) -> ?'ZMQ_THREAD_AFFINITY_CPU_REMOVE';
+option_name(thread_name_prefix) -> ?'ZMQ_THREAD_NAME_PREFIX'.
+
+

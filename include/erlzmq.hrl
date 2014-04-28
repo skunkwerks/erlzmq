@@ -70,8 +70,8 @@
 -define('ZMQ_HANDSHAKE_IVL', 66).
 -define('ZMQ_SOCKS_PROXY', 68).
 -define('ZMQ_XPUB_NODROP', 69).
-% context option
-% -define('ZMQ_BLOCKY', 70).
+% blocky is a context option but for some reason is defined along with socket options in zmq.h
+-define('ZMQ_BLOCKY', 70).
 -define('ZMQ_XPUB_MANUAL', 71).
 -define('ZMQ_XPUB_WELCOME_MSG', 72).
 -define('ZMQ_STREAM_NOTIFY', 73).
@@ -112,6 +112,18 @@
 % ZMQ send/recv flags
 -define('ZMQ_DONTWAIT',    1).
 -define('ZMQ_SNDMORE',     2).
+
+% ZMQ Context options
+-define('ZMQ_IO_THREADS', 1).
+-define('ZMQ_MAX_SOCKETS', 2).
+-define('ZMQ_SOCKET_LIMIT', 3).
+-define('ZMQ_THREAD_PRIORITY', 3).
+-define('ZMQ_THREAD_SCHED_POLICY', 4).
+-define('ZMQ_MAX_MSGSZ', 5).
+-define('ZMQ_MSG_T_SIZE', 6).
+-define('ZMQ_THREAD_AFFINITY_CPU_ADD', 7).
+-define('ZMQ_THREAD_AFFINITY_CPU_REMOVE', 8).
+-define('ZMQ_THREAD_NAME_PREFIX', 9).
 
 %% Types
 
@@ -268,3 +280,22 @@
 %% Possible option values for {@link erlzmq:setsockopt/3. setsockopt/3}.
 -type erlzmq_sockopt_value() :: integer() | iolist().
 
+%% Available options for {@link erlzmq:ctx_set/3. ctx_set/3}
+%% and {@link erlzmq:ctx_get/2. ctx_get/2}.<br />
+%% <i>For more information see
+%% <a href="http://api.zeromq.org/master:zmq_ctx_set">zmq_ctx_set</a>
+%% and <a href="http://api.zeromq.org/master:zmq_ctx_get">zmq_ctx_get</a></i>
+
+-type erlzmq_ctxopt() ::
+    blocky |
+    io_threads |
+    thread_sched_policy |
+    thread_priority |
+    thread_affinity_cpu_add |
+    thread_affinity_cpu_remove |
+    thread_name_prefix |
+    max_msgsz |
+    msg_t_size |
+    socket_limit |
+    max_sockets |
+    ipv6.
