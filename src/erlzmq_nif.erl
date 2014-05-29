@@ -1,7 +1,7 @@
 %% @hidden
 -module(erlzmq_nif).
 
--export([context/1,
+-export([context/2,
          socket/4,
          bind/2,
          connect/2,
@@ -34,7 +34,7 @@ init() ->
     erlang:load_nif(filename:join(PrivDir, "erlzmq_nif"), 0).
 
 
-context(_Threads) ->
+context(_Threads, _Opts) ->
     erlang:nif_error(not_loaded).
 
 socket(_Context, _Type, _Active, _ActivePid) ->
