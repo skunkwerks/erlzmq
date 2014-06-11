@@ -22,6 +22,9 @@
 // THE SOFTWARE.
 
 #include "zmq.h"
+#if ZMQ_VERSION_MAJOR < 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR < 1
+#include "zmq_utils.h"
+#endif
 #include "erl_nif.h"
 #include "erl_driver.h"
 #include "vector.h"
@@ -135,6 +138,7 @@ NIF(erlzmq_nif_close);
 NIF(erlzmq_nif_term);
 NIF(erlzmq_nif_ctx_get);
 NIF(erlzmq_nif_ctx_set);
+NIF(erlzmq_nif_curve_keypair);
 NIF(erlzmq_nif_version);
 
 static void * polling_thread(void * handle);
@@ -157,6 +161,7 @@ static ErlNifFunc nif_funcs[] =
   {"term", 1, erlzmq_nif_term},
   {"ctx_get", 2, erlzmq_nif_ctx_get},
   {"ctx_set", 3, erlzmq_nif_ctx_set},
+  {"curve_keypair", 0, erlzmq_nif_curve_keypair},
   {"version", 0, erlzmq_nif_version}
 };
 
@@ -504,6 +509,7 @@ NIF(erlzmq_nif_setsockopt)
   ErlNifUInt64 value_uint64;
   ErlNifSInt64 value_int64;
   ErlNifBinary value_binary;
+  uint8_t z85_str[41];
   int value_int;
   void *option_value;
   size_t option_len;
@@ -562,7 +568,15 @@ NIF(erlzmq_nif_setsockopt)
     case ZMQ_ZAP_DOMAIN:
     case ZMQ_PLAIN_PASSWORD:
     case ZMQ_PLAIN_USERNAME:
+    #endif
+      if (! enif_inspect_iolist_as_binary(env, argv[2], &value_binary)) {
+        return enif_make_badarg(env);
+      }
+      option_value = value_binary.data;
+      option_len = value_binary.size;
+      break;
     
+    #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 0
     // binary or Z85 string
     case ZMQ_CURVE_PUBLICKEY:
     case ZMQ_CURVE_SECRETKEY:
@@ -571,16 +585,24 @@ NIF(erlzmq_nif_setsockopt)
       if (! enif_inspect_iolist_as_binary(env, argv[2], &value_binary)) {
         return enif_make_badarg(env);
       }
-      option_value = value_binary.data;
-      option_len = value_binary.size;
+      if (value_binary.size == 32) {
+        // binary
+        option_value = value_binary.data;
+        option_len = value_binary.size;
+      } else if (value_binary.size == 40) {
+        // z85-encoded
+        memcpy(z85_str, value_binary.data, 40);
+        z85_str[40] = 0;
+        option_value = z85_str;
+        option_len = 40;
+      } else {
+        // XXX Perhaps should give reason for failure
+        return enif_make_badarg(env);
+      }
       break;
+      
     // int
     case ZMQ_BACKLOG:
-    case ZMQ_CURVE_SERVER:
-    case ZMQ_GSSAPI_PLAINTEXT:
-    case ZMQ_GSSAPI_SERVER:
-    case ZMQ_IMMEDIATE:
-    case ZMQ_IPV6:
     case ZMQ_LINGER:
     case ZMQ_MULTICAST_HOPS:
     case ZMQ_RATE:
@@ -591,7 +613,6 @@ NIF(erlzmq_nif_setsockopt)
     case ZMQ_RECONNECT_IVL_MAX:
     case ZMQ_RECOVERY_IVL:
     case ZMQ_ROUTER_MANDATORY:
-    case ZMQ_ROUTER_RAW:
     case ZMQ_SNDBUF:
     case ZMQ_SNDHWM:
     case ZMQ_SNDTIMEO:
@@ -629,6 +650,12 @@ NIF(erlzmq_nif_setsockopt)
     #endif
 
     #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 0
+    case ZMQ_ROUTER_RAW:
+    case ZMQ_GSSAPI_PLAINTEXT:
+    case ZMQ_GSSAPI_SERVER:
+    case ZMQ_IMMEDIATE:
+    case ZMQ_IPV6:
+    case ZMQ_CURVE_SERVER:
     case ZMQ_CONFLATE:
     case ZMQ_REQ_RELAXED:
     case ZMQ_REQ_CORRELATE:
@@ -638,7 +665,6 @@ NIF(erlzmq_nif_setsockopt)
 
     // deprecated
     case ZMQ_IPV4ONLY:
-
       if (! enif_get_int(env, argv[2], &value_int)) {
         return enif_make_badarg(env);
       }
@@ -778,11 +804,6 @@ NIF(erlzmq_nif_getsockopt)
                               enif_make_binary(env, &value_binary));
     // int
     case ZMQ_BACKLOG:
-    case ZMQ_CURVE_SERVER:
-    case ZMQ_GSSAPI_PLAINTEXT:
-    case ZMQ_GSSAPI_SERVER:
-    case ZMQ_IMMEDIATE:
-    case ZMQ_IPV6:
     case ZMQ_LINGER:
     case ZMQ_MULTICAST_HOPS:
     case ZMQ_RATE:
@@ -802,7 +823,6 @@ NIF(erlzmq_nif_getsockopt)
     case ZMQ_RCVMORE:
     case ZMQ_EVENTS:
     case ZMQ_TYPE:
-    case ZMQ_MECHANISM:
     
     #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 3
     case ZMQ_GSSAPI_SERVICE_PRINCIPAL_NAMETYPE:
@@ -825,7 +845,13 @@ NIF(erlzmq_nif_getsockopt)
     #endif
 
     #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 0
+    case ZMQ_IMMEDIATE:
+    case ZMQ_IPV6:
+    case ZMQ_CURVE_SERVER:
+    case ZMQ_GSSAPI_PLAINTEXT:
+    case ZMQ_GSSAPI_SERVER:
     case ZMQ_PLAIN_SERVER:
+    case ZMQ_MECHANISM:
     #endif
     // FIXME SOCKET on Windows, int on POSIX
     case ZMQ_FD:
@@ -1270,6 +1296,25 @@ NIF(erlzmq_nif_ctx_set)
     enif_mutex_unlock(context->mutex);
     return enif_make_atom(env, "ok");
   }
+}
+
+NIF(erlzmq_nif_curve_keypair)
+{
+  char public[41];
+  char secret[41];
+  ErlNifBinary pub_bin;
+  ErlNifBinary sec_bin;
+  if (zmq_curve_keypair(public, secret)) {
+    return return_zmq_errno(env, zmq_errno());
+  }
+  enif_alloc_binary(40, &pub_bin);
+  enif_alloc_binary(40, &sec_bin);
+  memcpy(pub_bin.data, public, 40);
+  memcpy(sec_bin.data, secret, 40);
+  return enif_make_tuple3(env, enif_make_atom(env, "ok"),
+                          enif_make_binary(env, &pub_bin),
+                          enif_make_binary(env, &sec_bin));
+
 }
 
 NIF(erlzmq_nif_ctx_get)

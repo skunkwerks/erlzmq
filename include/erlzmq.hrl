@@ -102,7 +102,6 @@
 -define('ZMQ_FAIL_UNROUTABLE', ?'ZMQ_ROUTER_MANDATORY').
 -define('ZMQ_ROUTER_BEHAVIOR', ?'ZMQ_ROUTER_MANDATORY').
 
-
 %  Message options
 -define('ZMQ_MORE',  1).
 -define('ZMQ_SHARED',  3).

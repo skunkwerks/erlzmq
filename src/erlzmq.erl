@@ -48,6 +48,7 @@
          term/2,
          ctx_get/2,
          ctx_set/3,
+         curve_keypair/0,
          version/0]).
 -export_type([
     erlzmq_socket_type/0,
@@ -437,6 +438,20 @@ ctx_get(Context, Name) when is_atom(Name) ->
 ctx_set(Context, Name, Value) when is_integer(Value), is_atom(Name) ->
     erlzmq_nif:ctx_set(Context, option_name(Name), Value).
 
+%% @doc Generate a Curve keypair.
+%% <br />
+%% This will return two 40-character binaries, each a Z85-encoded
+%% version of the 32-byte keys from curve.
+%% <br />
+%% <i>For more information see
+%% <a href="http://api.zeromq.org/4-0:zmq_curve_keypair">zmq_curve_keypair</a>.</i>
+%% @end
+-spec curve_keypair() ->
+    {ok, binary(), binary()} |
+    erlzmq_error().
+curve_keypair() ->
+    erlzmq_nif:curve_keypair().
+
 %% @doc Returns the 0MQ library version.
 %% @end
 -spec version() -> {integer(), integer(), integer()}.
@@ -590,5 +605,3 @@ option_name(msg_t_size) -> ?'ZMQ_MSG_T_SIZE';
 option_name(thread_affinity_cpu_add) -> ?'ZMQ_THREAD_AFFINITY_CPU_ADD';
 option_name(thread_affinity_cpu_remove) -> ?'ZMQ_THREAD_AFFINITY_CPU_REMOVE';
 option_name(thread_name_prefix) -> ?'ZMQ_THREAD_NAME_PREFIX'.
-
-
