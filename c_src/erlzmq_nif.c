@@ -580,6 +580,7 @@ NIF(erlzmq_nif_getsockopt)
     case ZMQ_GSSAPI_PRINCIPAL:
     case ZMQ_GSSAPI_SERVICE_PRINCIPAL:
     case ZMQ_LAST_ENDPOINT:
+    case ZMQ_BINDTODEVICE:
     
     #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 2
     // string
@@ -591,7 +592,7 @@ NIF(erlzmq_nif_getsockopt)
     case ZMQ_ZAP_DOMAIN:
     case ZMQ_PLAIN_PASSWORD:
     case ZMQ_PLAIN_USERNAME:
-    case ZMQ_BINDTODEVICE:
+    
     // binary or Z85 string
     case ZMQ_CURVE_PUBLICKEY:
     case ZMQ_CURVE_SECRETKEY:
