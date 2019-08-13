@@ -592,7 +592,11 @@ NIF(erlzmq_nif_getsockopt)
     case ZMQ_GSSAPI_PRINCIPAL:
     case ZMQ_GSSAPI_SERVICE_PRINCIPAL:
     case ZMQ_LAST_ENDPOINT:
+    
+    #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 3
+    // string
     case ZMQ_BINDTODEVICE:
+    #endif
     
     #if ZMQ_VERSION_MAJOR > 4 || ZMQ_VERSION_MAJOR == 4 && ZMQ_VERSION_MINOR >= 2
     // string
