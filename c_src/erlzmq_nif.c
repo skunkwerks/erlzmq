@@ -31,6 +31,18 @@
 
 #define ERLZMQ_MAX_CONCURRENT_REQUESTS 16384
 
+#ifndef ZMQ_ROUTING_ID
+#define ZMQ_ROUTING_ID ZMQ_IDENTITY
+#endif
+
+#ifndef ZMQ_CONNECT_ROUTING_ID
+#define ZMQ_CONNECT_ROUTING_ID ZMQ_CONNECT_RID
+#endif
+
+#ifndef ZMQ_IMMEDIATE
+#define ZMQ_IMMEDIATE ZMQ_DELAY_ATTACH_ON_CONNECT
+#endif
+
 static ErlNifResourceType* erlzmq_nif_resource_context;
 static ErlNifResourceType* erlzmq_nif_resource_socket;
 
