@@ -1092,7 +1092,7 @@ static void * polling_thread(void * handle)
   status = vector_append(erlzmq_thread_request_t, &requests, &request_empty);
   assert(status == 0);
 
-  int i;
+  size_t i;
   for (;;) {
     int count = zmq_poll(vector_p(zmq_pollitem_t, &items_zmq),
                          vector_count(&items_zmq), -1);
