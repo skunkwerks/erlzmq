@@ -124,6 +124,7 @@ NIF(erlzmq_nif_version);
 static void * polling_thread(void * handle);
 static ERL_NIF_TERM add_active_req(ErlNifEnv* env, erlzmq_socket_t * socket);
 static ERL_NIF_TERM return_zmq_errno(ErlNifEnv* env, int const value);
+static void terminate_context(void * ctx);
 
 static ErlNifFunc nif_funcs[] =
 {
@@ -166,7 +167,7 @@ NIF(erlzmq_nif_context)
   if (zmq_bind(context->thread_socket, thread_socket_id)) {
     zmq_close(context->thread_socket);
     enif_mutex_destroy(context->mutex);
-    zmq_term(context->context_zmq);
+    terminate_context(context->context_zmq);
     enif_release_resource(context);
     return return_zmq_errno(env, zmq_errno());
   }
@@ -181,7 +182,7 @@ NIF(erlzmq_nif_context)
     free(context->thread_socket_name);
     zmq_close(context->thread_socket);
     enif_mutex_destroy(context->mutex);
-    zmq_term(context->context_zmq);
+    terminate_context(context->context_zmq);
     enif_release_resource(context);
     return return_zmq_errno(env, value_errno);
   }
@@ -1425,7 +1426,7 @@ static void * polling_thread(void * handle)
         vector_destroy(&requests);
         // the thread will block here until all sockets
         // within the context are closed
-        zmq_term(context_term);
+        terminate_context(context_term);
         return NULL;
       }
       else {
@@ -1704,6 +1705,19 @@ static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
 }
 
 static void on_unload(ErlNifEnv* env, void* priv_data) {
+}
+
+static void terminate_context(void * ctx) {
+  while (zmq_term(ctx) != 0) {
+    const int errno_value = zmq_errno();
+    if (errno_value == EINTR) {
+      // Termination was interrupted by a signal
+      continue;
+    } else {
+      fprintf(stderr, "unable to terminate context %s\n", strerror(errno_value));
+      assert(0);
+    }
+  }
 }
 
 ERL_NIF_INIT(erlzmq_nif, nif_funcs, &on_load, NULL, NULL, &on_unload);
