@@ -16,3 +16,6 @@ doc/stylesheet.css
 doc/modules-frame.html
 _build/
 *.d
+.rebar3
+.vscode
+compile_commands.json
