@@ -807,7 +807,10 @@ NIF(erlzmq_nif_close)
       enif_mutex_unlock(socket->mutex);
       return return_zmq_errno(env, ETERM);
     }
-    zmq_close(socket->socket_zmq);
+    if (zmq_close(socket->socket_zmq) == -1) {
+      fprintf(stderr, "close failed %s\n", strerror(zmq_errno()));
+      assert(0);
+    }
     socket->socket_zmq = 0;
     enif_mutex_unlock(socket->mutex);
     enif_mutex_destroy(socket->mutex);
@@ -1150,7 +1153,10 @@ static void * polling_thread(void * handle)
           }
         }
         // close the socket
-        zmq_close(r->data.close.socket->socket_zmq);
+        if (zmq_close(r->data.close.socket->socket_zmq) == -1) {
+          fprintf(stderr, "close failed %s\n", strerror(zmq_errno()));
+          assert(0);
+        }
         r->data.close.socket->socket_zmq = 0;
         mutex = r->data.close.socket->mutex;
         r->data.close.socket->mutex = 0;
