@@ -379,20 +379,6 @@ shutdown_blocking_test() ->
             % very infrequent
             ok
     end,
-    ?PRINT_END.
-
-shutdown_blocking_unblocking_test() ->
-    ?PRINT_START,
-    {ok, C} = erlzmq:context(),
-    {ok, _} = erlzmq:socket(C, [pub, {active, false}]),
-    V = erlzmq:term(C, 0),
-    ?assertMatch({error, {timeout, _}}, V),
-    {error, {timeout, Ref}} = V,
-    % all remaining sockets are automatically closed by term (i.e., zmq_term)
-    receive
-        {Ref, ok} ->
-            ok
-    end,
     erlzmq:close(S),
     ?PRINT_END.
 
