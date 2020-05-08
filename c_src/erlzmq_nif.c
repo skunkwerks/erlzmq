@@ -567,7 +567,10 @@ NIF(erlzmq_nif_send)
     return return_zmq_errno(env, zmq_errno());
   }
 
-  memcpy(zmq_msg_data(&req.data.send.msg), binary.data, binary.size);
+  void * data = zmq_msg_data(&req.data.send.msg);
+  assert(data);
+
+  memcpy(data, binary.data, binary.size);
 
   int polling_thread_send = 1;
   if (! socket->active) {
@@ -613,7 +616,9 @@ NIF(erlzmq_nif_send)
       return return_zmq_errno(env, zmq_errno());
     }
 
-    memcpy(zmq_msg_data(&msg), &req, sizeof(erlzmq_thread_request_t));
+    void * data = zmq_msg_data(&msg);
+    assert(data);
+    memcpy(data, &req, sizeof(erlzmq_thread_request_t));
 
     if (! socket->context->mutex) {
       return return_zmq_errno(env, ETERM);
@@ -706,7 +711,9 @@ NIF(erlzmq_nif_recv)
       return return_zmq_errno(env, zmq_errno());
     }
 
-    memcpy(zmq_msg_data(&msg), &req, sizeof(erlzmq_thread_request_t));
+    void * data = zmq_msg_data(&msg);
+    assert(data);
+    memcpy(data, &req, sizeof(erlzmq_thread_request_t));
 
     if (! socket->context->mutex) {
       zmq_msg_close(&msg);
@@ -742,7 +749,9 @@ NIF(erlzmq_nif_recv)
 
     ErlNifBinary binary;
     enif_alloc_binary(zmq_msg_size(&msg), &binary);
-    memcpy(binary.data, zmq_msg_data(&msg), zmq_msg_size(&msg));
+    void * data = zmq_msg_data(&msg);
+    assert(data);
+    memcpy(binary.data, data, zmq_msg_size(&msg));
 
     zmq_msg_close(&msg);
 
@@ -773,7 +782,9 @@ NIF(erlzmq_nif_close)
     return return_zmq_errno(env, zmq_errno());
   }
 
-  memcpy(zmq_msg_data(&msg), &req, sizeof(erlzmq_thread_request_t));
+  void * data = zmq_msg_data(&msg);
+  assert(data);
+  memcpy(data, &req, sizeof(erlzmq_thread_request_t));
 
   if (! socket->context->mutex) {
     zmq_msg_close(&msg);
@@ -840,7 +851,9 @@ NIF(erlzmq_nif_term)
     return return_zmq_errno(env, zmq_errno());
   }
 
-  memcpy(zmq_msg_data(&msg), &req, sizeof(erlzmq_thread_request_t));
+  void * data = zmq_msg_data(&msg);
+  assert(data);
+  memcpy(data, &req, sizeof(erlzmq_thread_request_t));
 
   if (! context->mutex) {
     zmq_msg_close(&msg);
@@ -965,7 +978,9 @@ static void * polling_thread(void * handle)
 
           ErlNifBinary binary;
           enif_alloc_binary(zmq_msg_size(&msg), &binary);
-          memcpy(binary.data, zmq_msg_data(&msg), zmq_msg_size(&msg));
+          void * data = zmq_msg_data(&msg);
+          assert(data);
+          memcpy(binary.data, data, zmq_msg_size(&msg));
           zmq_msg_close(&msg);
   
           if (r->data.recv.socket->active == ERLZMQ_SOCKET_ACTIVE_ON) {
@@ -1076,6 +1091,7 @@ static void * polling_thread(void * handle)
 
       erlzmq_thread_request_t * r =
         (erlzmq_thread_request_t *) zmq_msg_data(&msg);
+      assert(r);
       ErlNifMutex * mutex = 0;
       if (r->type == ERLZMQ_THREAD_REQUEST_SEND) {
         zmq_pollitem_t item_zmq = {r->data.send.socket->socket_zmq,
@@ -1248,7 +1264,9 @@ static ERL_NIF_TERM add_active_req(ErlNifEnv* env, erlzmq_socket_t * socket)
     return return_zmq_errno(env, zmq_errno());
   }
 
-  memcpy(zmq_msg_data(&msg), &req, sizeof(erlzmq_thread_request_t));
+  void * data = zmq_msg_data(&msg);
+  assert(data);
+  memcpy(data, &req, sizeof(erlzmq_thread_request_t));
 
   if (! socket->context->mutex) {
     zmq_msg_close(&msg);
