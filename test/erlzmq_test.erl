@@ -370,7 +370,7 @@ shutdown_no_blocking_test() ->
 shutdown_blocking_test() ->
     ?PRINT_START,
     {ok, C} = erlzmq:context(),
-    {ok, _S} = erlzmq:socket(C, [pub, {active, false}]),
+    {ok, S} = erlzmq:socket(C, [pub, {active, false}]),
     case erlzmq:term(C, 0) of
         {error, {timeout, _}} ->
             % typical
@@ -393,6 +393,7 @@ shutdown_blocking_unblocking_test() ->
         {Ref, ok} ->
             ok
     end,
+    erlzmq:close(S),
     ?PRINT_END.
 
 join_procs(0) ->
