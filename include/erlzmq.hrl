@@ -159,7 +159,7 @@
 
 %% Possible error types.
 -type erlzmq_error_type() :: efsm | enocompatproto | eterm |
-                           emthread | errno() | {unknown, integer()}.
+                           emthread | errno() | unknown.
 
 %% Error tuples returned by most API functions.
 -type erlzmq_error() :: {error, erlzmq_error_type()}.

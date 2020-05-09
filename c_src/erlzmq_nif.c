@@ -1849,7 +1849,7 @@ static ERL_NIF_TERM return_zmq_errno(ErlNifEnv* env, int const value)
                               enif_make_atom(env, "emthread"));
     default:
       return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                              enif_make_int(env, value));
+                              enif_make_atom(env, erl_errno_id(value)));
   }
 }
 
