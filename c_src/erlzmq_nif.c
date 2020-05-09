@@ -1009,8 +1009,8 @@ NIF(erlzmq_nif_close)
       return return_zmq_errno(env, ETERM);
     }
     if (zmq_close(socket->socket_zmq) == -1) {
-      fprintf(stderr, "close failed %s\n", strerror(zmq_errno()));
-      assert(0);
+      enif_mutex_unlock(socket->mutex);
+      return return_zmq_errno(env, zmq_errno());
     }
     socket->socket_zmq = 0;
     socket->closed = 1;
@@ -1290,7 +1290,7 @@ static void * polling_thread(void * handle)
         zmq_msg_t msg;
         if (zmq_msg_init(&msg)) {
           fprintf(stderr, "zmq_msg_init error: %s\n",
-                  strerror(zmq_errno()));
+                  zmq_strerror(zmq_errno()));
           assert(0);
         }
         int keep_socket = 0;
@@ -1342,7 +1342,7 @@ static void * polling_thread(void * handle)
             if (zmq_getsockopt(r->data.recv.socket->socket_zmq,
                                ZMQ_RCVMORE, &flag_value, &value_len)) {
               fprintf(stderr, "zmq_getsockopt error: %s\n",
-                      strerror(zmq_errno()));
+                      zmq_strerror(zmq_errno()));
               assert(0);
             }
             if(flag_value == 1) {
@@ -1427,7 +1427,7 @@ static void * polling_thread(void * handle)
       zmq_msg_t msg;
       if (zmq_msg_init(&msg)) {
         fprintf(stderr, "zmq_msg_init error: %s\n",
-                strerror(zmq_errno()));
+                zmq_strerror(zmq_errno()));
         assert(0);
       }
 
@@ -1501,7 +1501,7 @@ static void * polling_thread(void * handle)
         }
         // close the socket
         if (zmq_close(r->data.close.socket->socket_zmq) == -1) {
-          fprintf(stderr, "close failed %s\n", strerror(zmq_errno()));
+          fprintf(stderr, "close failed %s\n", zmq_strerror(zmq_errno()));
           assert(0);
         }
         r->data.close.socket->socket_zmq = 0;
@@ -1907,7 +1907,7 @@ static void terminate_context(void * ctx) {
       // Termination was interrupted by a signal
       continue;
     } else {
-      fprintf(stderr, "unable to terminate context %s\n", strerror(errno_value));
+      fprintf(stderr, "unable to terminate context %s\n", zmq_strerror(errno_value));
       assert(0);
     }
   }
