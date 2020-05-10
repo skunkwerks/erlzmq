@@ -653,7 +653,8 @@ NIF(erlzmq_nif_getsockopt)
         return return_zmq_errno(env, zmq_errno());
       }
       enif_mutex_unlock(socket->mutex);
-      enif_alloc_binary(option_len, &value_binary);
+      int alloc_success = enif_alloc_binary(option_len, &value_binary);
+      assert(alloc_success);
       memcpy(value_binary.data, option_value, option_len);
       return enif_make_tuple2(env, enif_make_atom(env, "ok"),
                               enif_make_binary(env, &value_binary));
@@ -950,7 +951,8 @@ NIF(erlzmq_nif_recv)
     enif_mutex_unlock(socket->mutex);
 
     ErlNifBinary binary;
-    enif_alloc_binary(zmq_msg_size(&msg), &binary);
+    int alloc_success = enif_alloc_binary(zmq_msg_size(&msg), &binary);
+    assert(alloc_success);
     void * data = zmq_msg_data(&msg);
     assert(data);
     memcpy(binary.data, data, zmq_msg_size(&msg));
@@ -1327,7 +1329,8 @@ static void * polling_thread(void * handle)
           enif_mutex_unlock(r->data.recv.socket->mutex);
 
           ErlNifBinary binary;
-          enif_alloc_binary(zmq_msg_size(&msg), &binary);
+          int alloc_success = enif_alloc_binary(zmq_msg_size(&msg), &binary);
+          assert(alloc_success);
           void * data = zmq_msg_data(&msg);
           assert(data);
           memcpy(binary.data, data, zmq_msg_size(&msg));
