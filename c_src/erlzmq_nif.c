@@ -1530,8 +1530,11 @@ static void * polling_thread(void * handle)
           continue;
         }
         enif_mutex_lock(context->mutex);
-        free(context->thread_socket_name);
+        char * thread_socket_name = context->thread_socket_name;
         // use this to flag context is over
+        context->thread_socket_name = 0;
+        free(thread_socket_name);
+        
         context->thread_socket_name = 0;
         // cleanup pending requests
         for (i = 1; i < vector_count(&requests); ++i) {
