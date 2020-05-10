@@ -1900,6 +1900,8 @@ static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
                             (ErlNifResourceDtor*)socket_destructor,
                             ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER,
                             0);
+  assert(erlzmq_nif_resource_context);
+  assert(erlzmq_nif_resource_socket);
   return 0;
 }
 
