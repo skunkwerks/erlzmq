@@ -46,7 +46,20 @@
          ctx_get/2,
          ctx_set/3,
          version/0]).
--export_type([erlzmq_socket/0, erlzmq_context/0]).
+-export_type([
+    erlzmq_socket_type/0,
+    erlzmq_endpoint/0,
+    errno/0,
+    erlzmq_error_type/0,
+    erlzmq_error/0,
+    erlzmq_data/0,
+    erlzmq_context/0,
+    erlzmq_socket/0,
+    erlzmq_send_recv_flag/0,
+    erlzmq_send_recv_flags/0,
+    erlzmq_sockopt/0,
+    erlzmq_sockopt_value/0,
+    erlzmq_ctxopt/0]).
 
 %% @equiv context(1)
 -spec context() ->
