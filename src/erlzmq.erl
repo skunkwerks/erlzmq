@@ -21,6 +21,8 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 %% THE SOFTWARE.
 
+%% @doc NIF based Erlang bindings for the ZeroMQ messaging library.
+
 -module(erlzmq).
 %% @headerfile "erlzmq.hrl"
 -include_lib("erlzmq.hrl").
