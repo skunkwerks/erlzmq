@@ -1284,13 +1284,12 @@ static void * polling_thread(void * handle)
 
         assert(r->data.recv.socket->mutex);
         enif_mutex_lock(r->data.recv.socket->mutex);
-        assert(r->data.recv.socket->status == ERLZMQ_SOCKET_STATUS_READY);
-        assert(r->data.recv.socket->socket_zmq);
-        if (zmq_recvmsg(r->data.recv.socket->socket_zmq, &msg,
+        if (r->data.recv.socket->status != ERLZMQ_SOCKET_STATUS_READY
+          || zmq_recvmsg(r->data.recv.socket->socket_zmq, &msg,
                         r->data.recv.flags) == -1) {
           enif_mutex_unlock(r->data.recv.socket->mutex);
           zmq_msg_close(&msg);
-          int const error = zmq_errno();
+          int const error = r->data.recv.socket->status != ERLZMQ_SOCKET_STATUS_READY ? ENOTSOCK : zmq_errno();
           if (r->data.recv.socket->active == ERLZMQ_SOCKET_ACTIVE_ON &&
               error == EAGAIN) {
             keep_socket = 1;
@@ -1387,15 +1386,14 @@ static void * polling_thread(void * handle)
         assert(r->data.send.socket->mutex);
 
         enif_mutex_lock(r->data.send.socket->mutex);
-        assert(r->data.send.socket->status == ERLZMQ_SOCKET_STATUS_READY);
-        assert(r->data.send.socket->socket_zmq);
-        if (zmq_sendmsg(r->data.send.socket->socket_zmq,
+        if (r->data.send.socket->status != ERLZMQ_SOCKET_STATUS_READY || zmq_sendmsg(r->data.send.socket->socket_zmq,
                         &r->data.send.msg, r->data.send.flags) == -1) {
+          const int error = r->data.send.socket->status != ERLZMQ_SOCKET_STATUS_READY ? ENOTSOCK : zmq_errno();
           enif_mutex_unlock(r->data.send.socket->mutex);
           enif_send(NULL, &r->data.send.pid, r->data.send.env,
             enif_make_tuple2(r->data.send.env,
               enif_make_copy(r->data.send.env, r->data.send.ref),
-              return_zmq_errno(r->data.send.env, zmq_errno())));
+              return_zmq_errno(r->data.send.env, error)));
         } else {
           enif_mutex_unlock(r->data.send.socket->mutex);
           enif_send(NULL, &r->data.send.pid, r->data.send.env,
