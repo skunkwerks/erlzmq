@@ -339,15 +339,15 @@ bad_init_test() ->
     ?assertEqual({error, einval}, erlzmq:context(-1)),
     ?PRINT_END.
 
-shutdown_stress_test() ->
-    ?PRINT_START,
-    ?assertMatch(ok, shutdown_stress_loop(10)),
-    ?PRINT_END.
-
 version_test() ->
     ?PRINT_START,
     {Major, Minor, Patch} = erlzmq:version(),
     ?assert(is_integer(Major) andalso is_integer(Minor) andalso is_integer(Patch)),
+    ?PRINT_END.
+
+shutdown_stress_test() ->
+    ?PRINT_START,
+    ?assertMatch(ok, shutdown_stress_loop(10)),
     ?PRINT_END.
 
 shutdown_stress_loop(0) ->
@@ -365,7 +365,7 @@ shutdown_no_blocking_test() ->
     ?PRINT_START,
     {ok, C} = erlzmq:context(),
     {ok, S} = erlzmq:socket(C, [pub, {active, false}]),
-    erlzmq:close(S),
+    ok = erlzmq:close(S),
     ?assertEqual(ok, erlzmq:term(C, 500)),
     ?PRINT_END.
 
@@ -381,7 +381,7 @@ shutdown_blocking_test() ->
             % very infrequent
             ok
     end,
-    erlzmq:close(S),
+    ok = erlzmq:close(S),
     ?PRINT_END.
 
 ctx_opt_test() ->
@@ -404,6 +404,7 @@ ctx_opt_test() ->
     {ok, NewV6} = erlzmq:ctx_get(C, ipv6),
     ?assertMatch(NewV6, 1),
     ok = erlzmq:ctx_set(C, ipv6, 0),
+    ok = erlzmq:term(C),
 
     ?PRINT_END.
 
