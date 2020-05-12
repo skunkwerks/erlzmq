@@ -1539,7 +1539,7 @@ static void * polling_thread(void * handle)
                       enif_make_uint64(r_old->data.recv.env,
                                       r_old->data.recv.socket->socket_index),
                       enif_make_resource(r_old->data.recv.env, r_old->data.recv.socket)),
-                    return_zmq_errno(r->data.recv.env, ETERM)));
+                    return_zmq_errno(r_old->data.recv.env, ETERM)));
               } else if (r->data.recv.socket->active == ERLZMQ_SOCKET_ACTIVE_OFF) {
                 enif_send(NULL, &r_old->data.recv.pid, r_old->data.recv.env,
                   enif_make_tuple2(r_old->data.recv.env,
