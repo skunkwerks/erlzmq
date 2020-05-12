@@ -201,6 +201,8 @@ NIF(erlzmq_nif_context)
     context->thread_socket = 0;
     enif_mutex_destroy(context->mutex);
     context->mutex = 0;
+    enif_cond_destroy(context->closing_cond);
+    context->closing_cond = 0;
     terminate_context(context->context_zmq);
     context->context_zmq = 0;
     enif_release_resource(context);
@@ -223,6 +225,8 @@ NIF(erlzmq_nif_context)
     assert(context->mutex);
     enif_mutex_destroy(context->mutex);
     context->mutex = 0;
+    enif_cond_destroy(context->closing_cond);
+    context->closing_cond = 0;
     assert(context->context_zmq);
     terminate_context(context->context_zmq);
     context->context_zmq = 0;
