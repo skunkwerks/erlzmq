@@ -54,6 +54,7 @@ typedef struct erlzmq_context {
   uint64_t socket_index;
   ErlNifTid polling_tid;
   ErlNifMutex * mutex;
+  ErlNifCond * closing_cond;
   int status;
 } erlzmq_context_t;
 
@@ -73,11 +74,12 @@ typedef struct erlzmq_socket {
 
 #define ERLZMQ_SOCKET_STATUS_READY   0
 #define ERLZMQ_SOCKET_STATUS_CLOSING 1
-#define ERLZMQ_SOCKET_STATUS_CLOSED  1
+#define ERLZMQ_SOCKET_STATUS_CLOSED  2
 
 #define ERLZMQ_CONTEXT_STATUS_READY       0
 #define ERLZMQ_CONTEXT_STATUS_TERMINATING 1
-#define ERLZMQ_CONTEXT_STATUS_TERMINATED  1
+#define ERLZMQ_CONTEXT_STATUS_CLOSING_POLLER 2
+#define ERLZMQ_CONTEXT_STATUS_TERMINATED  3
 
 #define ERLZMQ_THREAD_REQUEST_SEND      1
 #define ERLZMQ_THREAD_REQUEST_RECV      2
@@ -171,6 +173,7 @@ NIF(erlzmq_nif_context)
   context->status = ERLZMQ_CONTEXT_STATUS_TERMINATED;
   context->polling_tid = 0;
   context->mutex = 0;
+  context->closing_cond = 0;
   context->context_zmq = zmq_init(thread_count);
   if (! context->context_zmq) {
     enif_release_resource(context);
@@ -187,6 +190,7 @@ NIF(erlzmq_nif_context)
     return return_zmq_errno(env, zmq_errno());
   }
   context->mutex = enif_mutex_create("erlzmq_context_t_mutex");
+  context->closing_cond = enif_cond_create("erlzmq_context_t_closing_cond");
   assert(context->mutex);
   assert(context->thread_socket);
   if (zmq_bind(context->thread_socket, thread_socket_id)) {
@@ -265,6 +269,12 @@ NIF(erlzmq_nif_socket)
   socket->context = context;
   assert(context->mutex);
   enif_mutex_lock(context->mutex);
+  if (context->status != ERLZMQ_CONTEXT_STATUS_READY) {
+    enif_mutex_unlock(context->mutex);
+    enif_release_resource(socket);
+    return return_zmq_errno(env, ETERM);
+  }
+
   socket->socket_index = context->socket_index++;
   assert(context->status == ERLZMQ_CONTEXT_STATUS_READY);
   assert(context->context_zmq);
@@ -320,8 +330,12 @@ NIF(erlzmq_nif_bind)
 
   assert(socket->mutex);
   enif_mutex_lock(socket->mutex);
-  assert(socket->status == ERLZMQ_SOCKET_STATUS_READY);
-  assert(socket->context->status == ERLZMQ_CONTEXT_STATUS_READY);
+
+  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
+    enif_mutex_unlock(socket->mutex);
+    free(endpoint);
+    return return_zmq_errno(env, ENOTSOCK);
+  }
 
   ERL_NIF_TERM result;
   assert(socket->socket_zmq);
@@ -379,8 +393,11 @@ NIF(erlzmq_nif_connect)
 
   assert(socket->mutex);
   enif_mutex_lock(socket->mutex);
-  assert(socket->status == ERLZMQ_SOCKET_STATUS_READY);
-  assert(socket->context->status == ERLZMQ_CONTEXT_STATUS_READY);
+  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
+    enif_mutex_unlock(socket->mutex);
+    free(endpoint);
+    return return_zmq_errno(env, ENOTSOCK);
+  }
 
   ERL_NIF_TERM result;
   assert(socket->socket_zmq);
@@ -579,8 +596,10 @@ NIF(erlzmq_nif_setsockopt)
 
   assert(socket->mutex);
   enif_mutex_lock(socket->mutex);
-  assert(socket->status == ERLZMQ_SOCKET_STATUS_READY);
-  assert(socket->context->status == ERLZMQ_CONTEXT_STATUS_READY);
+  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
+    enif_mutex_unlock(socket->mutex);
+    return return_zmq_errno(env, ENOTSOCK);
+  }
   assert(socket->socket_zmq);
   if (zmq_setsockopt(socket->socket_zmq, option_name,
                           option_value, option_len)) {
@@ -624,8 +643,10 @@ NIF(erlzmq_nif_getsockopt)
 
   assert(socket->mutex);
   enif_mutex_lock(socket->mutex);
-  assert(socket->status == ERLZMQ_SOCKET_STATUS_READY);
-  assert(socket->context->status == ERLZMQ_CONTEXT_STATUS_READY);
+  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
+    enif_mutex_unlock(socket->mutex);
+    return return_zmq_errno(env, ENOTSOCK);
+  }
 
   switch(option_name) {
     // int64_t
@@ -812,8 +833,11 @@ NIF(erlzmq_nif_send)
 
   assert(socket->mutex);
   enif_mutex_lock(socket->mutex);
-  assert(socket->status == ERLZMQ_SOCKET_STATUS_READY);
-  assert(socket->context->status == ERLZMQ_CONTEXT_STATUS_READY);
+  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
+    enif_mutex_unlock(socket->mutex);
+    zmq_msg_close(&req.data.send.msg);
+    return return_zmq_errno(env, ENOTSOCK);
+  }
 
   if (! socket->active) {
     // try send
@@ -919,8 +943,12 @@ NIF(erlzmq_nif_recv)
 
   assert(socket->mutex);
   enif_mutex_lock(socket->mutex);
-  assert(socket->status == ERLZMQ_SOCKET_STATUS_READY);
-  assert(socket->context->status == ERLZMQ_CONTEXT_STATUS_READY);
+  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
+    enif_mutex_unlock(socket->mutex);
+    zmq_msg_close(&req.data.send.msg);
+    return return_zmq_errno(env, ENOTSOCK);
+  }
+
   assert(socket->socket_zmq);
   if (zmq_recvmsg(socket->socket_zmq, &msg, ZMQ_DONTWAIT) == -1) {
     enif_mutex_unlock(socket->mutex);
@@ -996,9 +1024,6 @@ NIF(erlzmq_nif_close)
     return return_zmq_errno(env, ENOTSOCK);
   }
 
-  // TODO mutex?
-  socket->status = ERLZMQ_SOCKET_STATUS_CLOSING;
-
   erlzmq_thread_request_t req;
   req.type = ERLZMQ_THREAD_REQUEST_CLOSE;
   req.data.close.env = enif_alloc_env();
@@ -1016,35 +1041,60 @@ NIF(erlzmq_nif_close)
   assert(data);
   memcpy(data, &req, sizeof(erlzmq_thread_request_t));
 
+  assert(socket->mutex);
+  enif_mutex_lock(socket->mutex);
 
-  if (socket->context->status == ERLZMQ_CONTEXT_STATUS_TERMINATING) {
-    // context is terminating and poller thread will block until all sockets are closed
+  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
+    enif_mutex_unlock(socket->mutex);
     zmq_msg_close(&msg);
     enif_free_env(req.data.close.env);
+    return return_zmq_errno(env, ENOTSOCK);
+  }
+
+  socket->status = ERLZMQ_SOCKET_STATUS_CLOSING;
+
+  assert(socket->context->mutex);
+  enif_mutex_lock(socket->context->mutex);
+
+  if (socket->context->status == ERLZMQ_CONTEXT_STATUS_TERMINATING) {
+    // need to wait as poller thread will not be able to handle close message
+    // and closing socket now may break pending poll requests
+    // also socket needs to be unlocked as otherwise poller thread may deadlock
+    enif_mutex_unlock(socket->mutex);
+    assert(socket->context->closing_cond);
+    enif_cond_wait(socket->context->closing_cond, socket->context->mutex);
+    enif_mutex_lock(socket->mutex);
+  }
+
+  if (socket->context->status == ERLZMQ_CONTEXT_STATUS_CLOSING_POLLER) {
+    // poller thread is blocked on zmq context term
+    // it's safe to close socket now
+    enif_mutex_unlock(socket->context->mutex);
     destroy_socket(socket);
+    enif_mutex_unlock(socket->mutex);
+
+    zmq_msg_close(&msg);
+    enif_free_env(req.data.close.env);
 
     return enif_make_atom(env, "ok");
-  }
-  else if (socket->context->status == ERLZMQ_CONTEXT_STATUS_READY) {
-    assert(socket->context->mutex);
-    enif_mutex_lock(socket->context->mutex);
-
-    // assert(socket->status == ERLZMQ_SOCKET_STATUS_READY);
+  } else {
+    // context is ready, let poller thread close the socket
     assert(socket->context->status == ERLZMQ_CONTEXT_STATUS_READY);
     assert(socket->context->thread_socket);
     if (zmq_sendmsg(socket->context->thread_socket, &msg, 0) == -1) {
+      socket->status = ERLZMQ_SOCKET_STATUS_READY;
       enif_mutex_unlock(socket->context->mutex);
+      enif_mutex_unlock(socket->mutex);
       zmq_msg_close(&msg);
       enif_free_env(req.data.close.env);
       return return_zmq_errno(env, zmq_errno());
     }
     else {
       enif_mutex_unlock(socket->context->mutex);
+      enif_mutex_unlock(socket->mutex);
       zmq_msg_close(&msg);
       return enif_make_copy(env, req.data.close.ref);
     }
-  } else {
-    assert(0);
   }
 }
 
@@ -1080,9 +1130,16 @@ NIF(erlzmq_nif_term)
   assert(context->mutex);
   enif_mutex_lock(context->mutex);
 
-  assert(context->status == ERLZMQ_CONTEXT_STATUS_READY);
+  if (context->status != ERLZMQ_CONTEXT_STATUS_READY) {
+    enif_mutex_unlock(context->mutex);
+    zmq_msg_close(&msg);
+    enif_free_env(req.data.term.env);
+    return return_zmq_errno(env, ETERM);
+  }
+
   assert(context->thread_socket);
   if (zmq_sendmsg(context->thread_socket, &msg, 0) == -1) {
+    context->status = ERLZMQ_CONTEXT_STATUS_READY;
     enif_mutex_unlock(context->mutex);
     zmq_msg_close(&msg);
     enif_free_env(req.data.term.env);
@@ -1144,7 +1201,10 @@ NIF(erlzmq_nif_ctx_set)
 
   assert(context->mutex);
   enif_mutex_lock(context->mutex);
-  assert(context->status == ERLZMQ_CONTEXT_STATUS_READY);
+  if (context->status != ERLZMQ_CONTEXT_STATUS_READY) {
+    enif_mutex_unlock(context->mutex);
+    return return_zmq_errno(env, ETERM);
+  }
   assert(context->context_zmq);
   if (zmq_ctx_set(context->context_zmq, option_name,
                           value_int)) {
@@ -1195,7 +1255,10 @@ NIF(erlzmq_nif_ctx_get)
     #endif
       assert(context->mutex);
       enif_mutex_lock(context->mutex);
-      assert(context->status == ERLZMQ_CONTEXT_STATUS_READY);
+      if (context->status != ERLZMQ_CONTEXT_STATUS_READY) {
+        enif_mutex_unlock(context->mutex);
+        return return_zmq_errno(env, ETERM);
+      }
       assert(context->context_zmq);
       value_int = zmq_ctx_get(context->context_zmq, option_name);
       if (value_int == -1) {
@@ -1506,7 +1569,9 @@ static void * polling_thread(void * handle)
         }
 
         // close the socket
+        enif_mutex_lock(r->data.close.socket->mutex);
         destroy_socket(r->data.close.socket);
+        enif_mutex_unlock(r->data.close.socket->mutex);
 
         // notify the waiting request
         enif_send(NULL, &r->data.close.pid, r->data.close.env,
@@ -1519,12 +1584,26 @@ static void * polling_thread(void * handle)
       else if (r->type == ERLZMQ_THREAD_REQUEST_TERM) {
         assert(context->mutex);
         enif_mutex_lock(context->mutex);
-        char * thread_socket_name = context->thread_socket_name;
-        // use this to flag context is over
+        context->status = ERLZMQ_CONTEXT_STATUS_CLOSING_POLLER;
+
+        // close poller sockets
+
+        free(context->thread_socket_name);
         context->thread_socket_name = 0;
-        free(thread_socket_name);
         
-        context->thread_socket_name = 0;
+        assert(thread_socket);
+        int ret = zmq_close(thread_socket);
+        assert(ret == 0);
+        thread_socket = 0;
+
+        assert(context->thread_socket);
+        ret = zmq_close(context->thread_socket);
+        assert(ret == 0);
+        context->thread_socket = 0;
+
+        void * const context_term = context->context_zmq;
+        context->context_zmq = 0;
+        
         // cleanup pending requests
         for (i = 1; i < vector_count(&requests); ++i) {
           erlzmq_thread_request_t * r_old = vector_get(erlzmq_thread_request_t,
@@ -1563,7 +1642,9 @@ static void * polling_thread(void * handle)
             }
             else if (r_old->type == ERLZMQ_THREAD_REQUEST_CLOSE) {
               // close the socket
+              enif_mutex_lock(r_old->data.close.socket->mutex);
               destroy_socket(r_old->data.close.socket);
+              enif_mutex_unlock(r_old->data.close.socket->mutex);
 
               // notify the waiting request
               enif_send(NULL, &r_old->data.close.pid, r_old->data.close.env,
@@ -1576,23 +1657,17 @@ static void * polling_thread(void * handle)
               assert(0);
             }
         }
-        // terminate the context
-        assert(thread_socket);
-        int ret = zmq_close(thread_socket);
-        assert(ret == 0);
-        thread_socket = 0;
-        assert(context->thread_socket);
-        ret = zmq_close(context->thread_socket);
-        assert(ret == 0);
-        context->thread_socket = 0;
 
+        enif_mutex_unlock(context->mutex);
+        // notify waiting socket close calls
+        enif_cond_broadcast(context->closing_cond);
+        
         // the thread will block here until all sockets
         // within the context are closed
-        void * const context_term = context->context_zmq;
         terminate_context(context_term);
-        context->context_zmq = 0;
+        
+        enif_mutex_lock(context->mutex);
         context->status = ERLZMQ_CONTEXT_STATUS_TERMINATED;
-
         enif_mutex_unlock(context->mutex);
 
         // notify the waiting request
@@ -1878,6 +1953,11 @@ static void context_destructor(ErlNifEnv * env, erlzmq_context_t * context) {
     enif_mutex_destroy(context->mutex);
     context->mutex = 0;
   }
+
+  if (context->closing_cond) {
+    enif_cond_destroy(context->closing_cond);
+    context->closing_cond = 0;
+  }
 }
 
 static void socket_destructor(ErlNifEnv * env, erlzmq_socket_t * socket) {
@@ -1930,8 +2010,6 @@ static void terminate_context(void * ctx) {
 
 static void destroy_socket(erlzmq_socket_t * socket) {
   assert(socket->status == ERLZMQ_SOCKET_STATUS_CLOSING);
-  assert(socket->mutex);
-  enif_mutex_lock(socket->mutex);
 
   assert(socket->socket_zmq);
   const int ret = zmq_close(socket->socket_zmq);
@@ -1940,7 +2018,6 @@ static void destroy_socket(erlzmq_socket_t * socket) {
   socket->socket_zmq = 0;
   socket->status = ERLZMQ_SOCKET_STATUS_CLOSED;
 
-  enif_mutex_unlock(socket->mutex);
   enif_release_resource(socket);
   enif_release_resource(socket->context);
 }
