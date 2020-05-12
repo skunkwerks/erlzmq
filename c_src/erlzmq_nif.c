@@ -272,6 +272,10 @@ NIF(erlzmq_nif_socket)
                                                  sizeof(erlzmq_socket_t));
   assert(socket);
   socket->context = context;
+  socket->mutex = 0;
+  socket->status = ERLZMQ_SOCKET_STATUS_CLOSED;
+  socket->socket_zmq = 0;
+
   assert(context->mutex);
   enif_mutex_lock(context->mutex);
   if (context->status != ERLZMQ_CONTEXT_STATUS_READY) {
@@ -286,7 +290,6 @@ NIF(erlzmq_nif_socket)
   socket->socket_zmq = zmq_socket(context->context_zmq, socket_type);
   enif_mutex_unlock(context->mutex);
   if (! socket->socket_zmq) {
-    socket->status = ERLZMQ_SOCKET_STATUS_CLOSED;
     enif_release_resource(socket);
     return return_zmq_errno(env, zmq_errno());
   }
