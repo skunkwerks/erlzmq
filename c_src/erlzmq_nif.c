@@ -289,7 +289,7 @@ NIF(erlzmq_nif_socket)
   socket->active_pid = active_pid;
   socket->status = ERLZMQ_SOCKET_STATUS_READY;
   char mutex_name[64];
-  sprintf(mutex_name, "erlzmq_socket_t_mutex_%lld", socket->socket_index);
+  sprintf(mutex_name, "erlzmq_socket_t_mutex_%llu", socket->socket_index);
   socket->mutex = enif_mutex_create(mutex_name);
   assert(socket->mutex);
   enif_keep_resource(socket->context);
@@ -1962,7 +1962,7 @@ static void context_destructor(ErlNifEnv * env, erlzmq_context_t * context) {
 
 static void socket_destructor(ErlNifEnv * env, erlzmq_socket_t * socket) {
   if (socket->status != ERLZMQ_SOCKET_STATUS_CLOSED) {
-    fprintf(stderr, "destructor reached for socket %lld while not closed\n", socket->socket_index);
+    fprintf(stderr, "destructor reached for socket %llu while not closed\n", socket->socket_index);
     assert(0);
   }
 
