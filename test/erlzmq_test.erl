@@ -407,8 +407,6 @@ ctx_opt_test() ->
     ok = erlzmq:ctx_set(C, ipv6, 0),
     ok = erlzmq:term(C),
 
-    ok = erlzmq:term(C),
-
     ?PRINT_END.
 
 join_procs(0) ->

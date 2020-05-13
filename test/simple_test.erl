@@ -67,3 +67,19 @@ send_recv_active_test() ->
     ok = erlzmq:close(S1),
     ok = erlzmq:close(S2),
     ok = erlzmq:term(C).
+
+max_sockets_test() ->
+    {ok, C} = erlzmq:context(1, [{max_sockets, 33}]),
+    ok = erlzmq:ctx_set(C, max_sockets, 90),
+    Sockets = create_sockets(C, []),
+    ?assertEqual(length(Sockets), 31),
+    lists:foreach(fun (S) ->
+        ok = erlzmq:close(S)
+    end, Sockets),
+    ok = erlzmq:term(C).
+
+create_sockets(Context, List) ->
+    case erlzmq:socket(Context, [req, {active, true}]) of
+        {ok, S} -> create_sockets(Context, [S | List]);
+        {error, emfile} -> List
+    end.
