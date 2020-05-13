@@ -15,6 +15,7 @@
          ctx_set/3,
          curve_keypair/0,
          z85_decode/1,
+         z85_encode/1,
          version/0]).
 
 -on_load(init/0).
@@ -76,6 +77,9 @@ curve_keypair() ->
     erlang:nif_error(not_loaded).
 
 z85_decode(_Z85) ->
+    erlang:nif_error(not_loaded).
+
+z85_encode(_Binary) ->
     erlang:nif_error(not_loaded).
 
 version() ->

@@ -140,6 +140,7 @@ NIF(erlzmq_nif_ctx_get);
 NIF(erlzmq_nif_ctx_set);
 NIF(erlzmq_nif_curve_keypair);
 NIF(erlzmq_nif_z85_decode);
+NIF(erlzmq_nif_z85_encode);
 NIF(erlzmq_nif_version);
 
 static void * polling_thread(void * handle);
@@ -164,6 +165,7 @@ static ErlNifFunc nif_funcs[] =
   {"ctx_set", 3, erlzmq_nif_ctx_set},
   {"curve_keypair", 0, erlzmq_nif_curve_keypair},
   {"z85_decode", 1, erlzmq_nif_z85_decode},
+  {"z85_encode", 1, erlzmq_nif_z85_encode},
   {"version", 0, erlzmq_nif_version}
 };
 
@@ -1309,8 +1311,10 @@ NIF(erlzmq_nif_curve_keypair)
   if (zmq_curve_keypair(public, secret)) {
     return return_zmq_errno(env, zmq_errno());
   }
-  enif_alloc_binary(40, &pub_bin);
-  enif_alloc_binary(40, &sec_bin);
+  int alloc_success = enif_alloc_binary(40, &pub_bin);
+  assert(alloc_success);
+  alloc_success = enif_alloc_binary(40, &sec_bin);
+  assert(alloc_success);
   memcpy(pub_bin.data, public, 40);
   memcpy(sec_bin.data, secret, 40);
   return enif_make_tuple3(env, enif_make_atom(env, "ok"),
@@ -1329,20 +1333,56 @@ NIF(erlzmq_nif_z85_decode)
     return enif_make_badarg(env);
   }
   // 0-terminate the string
-  int z85_size = value_binary.size;
-  int dec_size = z85_size / 5 * 4;
+  size_t z85_size = value_binary.size;
+  size_t dec_size = z85_size / 5 * 4;
   char *z85buf = (char*) malloc(z85_size+1);
+  assert(z85buf);
   memcpy(z85buf, value_binary.data, value_binary.size);
   z85buf[value_binary.size] = 0;
 
   ErlNifBinary dec_bin;
   ERL_NIF_TERM ret;
-  enif_alloc_binary(dec_size, &dec_bin);
+  int alloc_success = enif_alloc_binary(dec_size, &dec_bin);
+  assert(alloc_success);
   if (zmq_z85_decode (dec_bin.data, z85buf) == NULL) {
     ret = return_zmq_errno(env, zmq_errno());
   } else {
     ret = enif_make_tuple2(env, enif_make_atom(env, "ok"),
                                 enif_make_binary(env, &dec_bin));
+  }
+  free(z85buf);
+  return ret;
+}
+
+NIF(erlzmq_nif_z85_encode)
+{
+  ErlNifBinary value_binary;
+  if (! enif_inspect_iolist_as_binary(env, argv[0], &value_binary)) {
+    return enif_make_badarg(env);
+  }
+  if (value_binary.size % 4 != 0) { 
+    return enif_make_badarg(env);
+  }
+
+  size_t z85_size = value_binary.size;
+  size_t enc_size = z85_size / 4 * 5;
+
+  // need to accomodate NULL terminator
+  char *z85buf = (char*) malloc(enc_size+1);
+  assert(z85buf);
+
+  ERL_NIF_TERM ret;
+
+  if (zmq_z85_encode(z85buf, value_binary.data, value_binary.size) == NULL) {
+    ret = return_zmq_errno(env, zmq_errno());
+  } else {
+    ErlNifBinary enc_bin;
+    int alloc_success = enif_alloc_binary(enc_size, &enc_bin);
+    assert(alloc_success);
+    // drop NULL terminator
+    memcpy(enc_bin.data, z85buf, enc_size);
+    ret = enif_make_tuple2(env, enif_make_atom(env, "ok"),
+                                enif_make_binary(env, &enc_bin));
   }
   free(z85buf);
   return ret;
