@@ -1671,11 +1671,8 @@ static void * polling_thread(void * handle)
         assert(0);
       }
 
-      assert(context->mutex);
-      enif_mutex_lock(context->mutex);
       assert(thread_socket);
       status = zmq_recvmsg(thread_socket, &msg, 0);
-      enif_mutex_unlock(context->mutex);
       assert(status != -1);
 
       assert(zmq_msg_size(&msg) == sizeof(erlzmq_thread_request_t));
