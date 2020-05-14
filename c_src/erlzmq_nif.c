@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <inttypes.h>
 #include <sys/resource.h>
+#include <time.h>
 
 #ifndef ZMQ_ROUTING_ID
 #define ZMQ_ROUTING_ID ZMQ_IDENTITY
@@ -97,14 +98,18 @@ typedef struct {
       ErlNifEnv * env;
       ERL_NIF_TERM ref;
       int flags;
-      zmq_msg_t msg;
       ErlNifPid pid;
+      int timeout;
+      long time_started;
+      zmq_msg_t msg;
     } send;
     struct {
       erlzmq_socket_t * socket;
       ErlNifEnv * env;
       ERL_NIF_TERM ref;
       int flags;
+      int timeout;
+      long time_started;
       ErlNifPid pid;
     } recv;
     struct {
@@ -150,6 +155,8 @@ static void destroy_socket(erlzmq_socket_t * socket);
 static size_t get_open_files_limit();
 static void reply_error(erlzmq_thread_request_t * r_old, int reason);
 static void complete_close_request(erlzmq_thread_request_t * r);
+static int get_timeout(void * socket, int type);
+static long get_monotonic_time_ms();
 
 static ErlNifFunc nif_funcs[] =
 {
@@ -917,9 +924,11 @@ NIF(erlzmq_nif_send)
   memcpy(data, binary.data, binary.size);
 
   int polling_thread_send = 1;
+  int timeout = -1;
 
   assert(socket->mutex);
   enif_mutex_lock(socket->mutex);
+  timeout = get_timeout(socket->socket_zmq, ZMQ_SNDTIMEO);
   if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
     enif_mutex_unlock(socket->mutex);
     const int ret = zmq_msg_close(&req.data.send.msg);
@@ -955,6 +964,8 @@ NIF(erlzmq_nif_send)
     req.data.send.ref = enif_make_ref(req.data.send.env);
     enif_self(env, &req.data.send.pid);
     req.data.send.socket = socket;
+    req.data.send.timeout = timeout;
+    req.data.send.time_started = get_monotonic_time_ms();
 
     zmq_msg_t msg;
     if (zmq_msg_init_size(&msg, sizeof(erlzmq_thread_request_t))) {
@@ -1032,11 +1043,13 @@ NIF(erlzmq_nif_recv)
   if (zmq_msg_init(&msg)) {
     return return_zmq_errno(env, zmq_errno());
   }
+  int timeout = -1;
   // try recv with noblock
   // if it fails, use the context thread poll for the recv
 
   assert(socket->mutex);
   enif_mutex_lock(socket->mutex);
+  timeout = get_timeout(socket->socket_zmq, ZMQ_RCVTIMEO);
   if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
     enif_mutex_unlock(socket->mutex);
     const int ret = zmq_msg_close(&req.data.send.msg);
@@ -1061,6 +1074,8 @@ NIF(erlzmq_nif_recv)
     req.data.recv.ref = enif_make_ref(req.data.recv.env);
     enif_self(env, &req.data.recv.pid);
     req.data.recv.socket = socket;
+    req.data.recv.timeout = timeout;
+    req.data.recv.time_started = get_monotonic_time_ms();
 
     if (zmq_msg_init_size(&msg, sizeof(erlzmq_thread_request_t)) == -1) {
       enif_free_env(req.data.recv.env);
@@ -1508,9 +1523,45 @@ static void * polling_thread(void * handle)
   for (;;) {
     assert(vector_count(&items_zmq) == vector_count(&requests));
     assert(vector_count(&items_zmq) <= max_open_files);
+    assert(vector_count(&items_zmq) >= 1);
+
+    int poll_timeout = -1;
+    long current_time = get_monotonic_time_ms();
+
+    // scan poll items for most immediate timeout & drop those already timed out
+    for (i = 1; i < vector_count(&requests); ++i) {
+      erlzmq_thread_request_t * r = vector_get(erlzmq_thread_request_t, &requests, i);
+      int request_timeout = -1;
+      long time_started;
+      if (r->type == ERLZMQ_THREAD_REQUEST_SEND) {
+        request_timeout = r->data.send.timeout;
+        time_started = r->data.send.time_started;
+      } else if (r->type == ERLZMQ_THREAD_REQUEST_RECV) {
+        request_timeout = r->data.recv.timeout;
+        time_started = r->data.recv.time_started;
+      } else {
+        assert(0);
+      }
+
+      if (request_timeout != -1) {
+        int time_left = (int)(time_started - current_time) + request_timeout;
+        if (time_left < 0) {
+          // request timed out
+          reply_error(r, EAGAIN);
+          status = vector_remove(&items_zmq, i);
+          assert(status == 0);
+          status = vector_remove(&requests, i);
+          assert(status == 0);
+        } else {
+          if (poll_timeout == -1 || time_left < poll_timeout) {
+            poll_timeout = time_left;
+          }
+        }
+      }
+    }
 
     int count = zmq_poll(vector_p(zmq_pollitem_t, &items_zmq),
-                         (int)vector_count(&items_zmq), -1);
+                         (int)vector_count(&items_zmq), poll_timeout);
     if (count == -1) {
       int error = zmq_errno();
       if (error == EINTR) {
@@ -1520,6 +1571,12 @@ static void * polling_thread(void * handle)
         fprintf(stderr, "unexpected error %s returned by zmq_poll\n", zmq_strerror(error));
         assert(0);
       }
+    }
+
+    if (count == 0) {
+      // one of the items timed out
+      // it will be dropped in the next iteration
+      continue;
     }
 
     if (vector_get(zmq_pollitem_t, &items_zmq, 0)->revents & ZMQ_POLLIN) {
@@ -1809,6 +1866,9 @@ static int add_active_req(ErlNifEnv* env, erlzmq_socket_t * socket)
   req.data.recv.flags = 0;
   enif_self(env, &req.data.recv.pid);
   req.data.recv.socket = socket;
+  // active request should not timeout
+  req.data.recv.timeout = -1;
+  req.data.recv.time_started = get_monotonic_time_ms();
 
   zmq_msg_t msg;
   if (zmq_msg_init_size(&msg, sizeof(erlzmq_thread_request_t)) == -1) {
@@ -2189,6 +2249,23 @@ static void complete_close_request(erlzmq_thread_request_t * r) {
       enif_make_copy(r->data.close.env, r->data.close.ref),
       enif_make_atom(r->data.close.env, "ok")));
   enif_free_env(r->data.close.env);
+}
+
+static int get_timeout(void * socket, int type) {
+  assert(socket);
+  assert(type == ZMQ_SNDTIMEO || type == ZMQ_RCVTIMEO);
+  int value_int;
+  size_t option_len = sizeof(value_int);
+  const int ret = zmq_getsockopt(socket, type, &value_int, &option_len);
+  assert(ret == 0);
+  return value_int;
+}
+
+static long get_monotonic_time_ms() {
+  struct timespec tp;
+  int ret = clock_gettime(CLOCK_MONOTONIC, &tp);
+  assert(ret == 0);
+  return (long)tp.tv_sec * 1000l + tp.tv_nsec / 1000000l;
 }
 
 ERL_NIF_INIT(erlzmq_nif, nif_funcs, &on_load, NULL, NULL, &on_unload)

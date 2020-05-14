@@ -595,8 +595,13 @@ bounce_fail(S, C) ->
     ok = erlzmq:setsockopt(S, rcvtimeo, 150),
     ?assertMatch({error, eagain}, erlzmq:recv(S)),
 
-    ?assertEqual(ok, erlzmq:send(S, Content, [sndmore])),
-    ?assertEqual(ok, erlzmq:send(S, Content)),
+    ok = erlzmq:setsockopt(S, sndtimeo, 150),
+    case erlzmq:send(S, Content, [sndmore]) of
+        ok ->
+            ?assertEqual(ok, erlzmq:send(S, Content));
+        {error, eagain} ->
+            ok
+    end,
 
     ok = erlzmq:setsockopt(C, rcvtimeo, 150),
     ?assertMatch({error, eagain}, erlzmq:recv(C)).
