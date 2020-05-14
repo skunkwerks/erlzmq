@@ -149,6 +149,7 @@ static void terminate_context(void * ctx);
 static void destroy_socket(erlzmq_socket_t * socket);
 static size_t get_open_files_limit();
 static void reply_error(erlzmq_thread_request_t * r_old, int reason);
+static void complete_close_request(erlzmq_thread_request_t * r);
 
 static ErlNifFunc nif_funcs[] =
 {
@@ -1531,27 +1532,11 @@ static void * polling_thread(void * handle)
               error == EAGAIN) {
             keep_socket = 1;
           }
-          else if (r->data.recv.socket->active == ERLZMQ_SOCKET_ACTIVE_ON) {
-            enif_send(NULL, &r->data.recv.socket->active_pid, r->data.recv.env,
-              enif_make_tuple3(r->data.recv.env,
-                enif_make_atom(r->data.recv.env, "zmq"),
-                enif_make_tuple2(r->data.recv.env,
-                  enif_make_uint64(r->data.recv.env,
-                                   r->data.recv.socket->socket_index),
-                  enif_make_resource(r->data.recv.env, r->data.recv.socket)),
-                return_zmq_errno(r->data.recv.env, error)));
-          }
           else {
-            // an EAGAIN error could occur if a timeout is set on the socket
-            enif_send(NULL, &r->data.recv.pid, r->data.recv.env,
-              enif_make_tuple2(r->data.recv.env,
-                enif_make_copy(r->data.recv.env, r->data.recv.ref),
-                return_zmq_errno(r->data.recv.env, error)));
+            reply_error(r, error);
           }
         }
         else {
-          
-
           ErlNifBinary binary;
           int alloc_success = enif_alloc_binary(zmq_msg_size(&msg), &binary);
           assert(alloc_success);
@@ -1597,6 +1582,9 @@ static void * polling_thread(void * handle)
               enif_make_tuple2(r->data.recv.env,
                 enif_make_copy(r->data.recv.env, r->data.recv.ref),
                 enif_make_binary(r->data.recv.env, &binary)));
+
+            enif_free_env(r->data.recv.env);
+            enif_release_resource(r->data.recv.socket);
           }
 
           enif_mutex_unlock(r->data.recv.socket->mutex);
@@ -1605,9 +1593,6 @@ static void * polling_thread(void * handle)
           enif_clear_env(r->data.recv.env);
         }
         else {
-          enif_free_env(r->data.recv.env);
-          enif_release_resource(r->data.recv.socket);
-
           status = vector_remove(&items_zmq, i);
           assert(status == 0);
           status = vector_remove(&requests, i);
@@ -1626,22 +1611,20 @@ static void * polling_thread(void * handle)
         if (r->data.send.socket->status != ERLZMQ_SOCKET_STATUS_READY || zmq_sendmsg(r->data.send.socket->socket_zmq,
                         &r->data.send.msg, r->data.send.flags) == -1) {
           const int error = r->data.send.socket->status != ERLZMQ_SOCKET_STATUS_READY ? ENOTSOCK : zmq_errno();
-          enif_mutex_unlock(r->data.send.socket->mutex);
-          enif_send(NULL, &r->data.send.pid, r->data.send.env,
-            enif_make_tuple2(r->data.send.env,
-              enif_make_copy(r->data.send.env, r->data.send.ref),
-              return_zmq_errno(r->data.send.env, error)));
+
+          reply_error(r, error);
         } else {
-          enif_mutex_unlock(r->data.send.socket->mutex);
           enif_send(NULL, &r->data.send.pid, r->data.send.env,
             enif_make_tuple2(r->data.send.env,
               enif_make_copy(r->data.send.env, r->data.send.ref),
               enif_make_atom(r->data.send.env, "ok")));
-        }
-        zmq_msg_close(&r->data.send.msg);
-        enif_free_env(r->data.send.env);
-        enif_release_resource(r->data.send.socket);
 
+          zmq_msg_close(&r->data.send.msg);
+          enif_free_env(r->data.send.env);
+          enif_release_resource(r->data.send.socket);
+        }
+        enif_mutex_unlock(r->data.send.socket->mutex);
+        
         status = vector_remove(&items_zmq, i);
         assert(status == 0);
         status = vector_remove(&requests, i);
@@ -1717,17 +1700,8 @@ static void * polling_thread(void * handle)
           }
         }
 
-        // close the socket
-        enif_mutex_lock(r->data.close.socket->mutex);
-        destroy_socket(r->data.close.socket);
-        enif_mutex_unlock(r->data.close.socket->mutex);
-
-        // notify the waiting request
-        enif_send(NULL, &r->data.close.pid, r->data.close.env,
-          enif_make_tuple2(r->data.close.env,
-            enif_make_copy(r->data.close.env, r->data.close.ref),
-            enif_make_atom(r->data.close.env, "ok")));
-        enif_free_env(r->data.close.env);
+        complete_close_request(r);
+        
         zmq_msg_close(&msg);
       }
       else if (r->type == ERLZMQ_THREAD_REQUEST_TERM) {
@@ -1759,21 +1733,11 @@ static void * polling_thread(void * handle)
                                                        &requests, i);
 
           if (r_old->type == ERLZMQ_THREAD_REQUEST_CLOSE) {
-              // close the socket
-              enif_mutex_lock(r_old->data.close.socket->mutex);
-              destroy_socket(r_old->data.close.socket);
-              enif_mutex_unlock(r_old->data.close.socket->mutex);
-
-              // notify the waiting request
-              enif_send(NULL, &r_old->data.close.pid, r_old->data.close.env,
-                enif_make_tuple2(r_old->data.close.env,
-                  enif_make_copy(r_old->data.close.env, r_old->data.close.ref),
-                  enif_make_atom(r_old->data.close.env, "ok")));
-              enif_free_env(r_old->data.close.env);
-            }
-            else {
+              complete_close_request(r_old);
+          }
+          else {
               reply_error(r_old, ETERM);
-            }
+          }
         }
 
         enif_mutex_unlock(context->mutex);
@@ -2181,6 +2145,21 @@ static void reply_error(erlzmq_thread_request_t * r_old, int reason) {
   } else {
     assert(0);
   }
+}
+
+static void complete_close_request(erlzmq_thread_request_t * r) {
+  assert(r->type == ERLZMQ_THREAD_REQUEST_CLOSE);
+  // close the socket
+  enif_mutex_lock(r->data.close.socket->mutex);
+  destroy_socket(r->data.close.socket);
+  enif_mutex_unlock(r->data.close.socket->mutex);
+
+  // notify the waiting request
+  enif_send(NULL, &r->data.close.pid, r->data.close.env,
+    enif_make_tuple2(r->data.close.env,
+      enif_make_copy(r->data.close.env, r->data.close.ref),
+      enif_make_atom(r->data.close.env, "ok")));
+  enif_free_env(r->data.close.env);
 }
 
 ERL_NIF_INIT(erlzmq_nif, nif_funcs, &on_load, NULL, NULL, &on_unload)
