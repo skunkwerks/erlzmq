@@ -936,24 +936,22 @@ NIF(erlzmq_nif_send)
     return return_zmq_errno(env, ENOTSOCK);
   }
 
-  if (! socket->active) {
-    // try send
-    assert(socket->socket_zmq);
-    if (zmq_sendmsg(socket->socket_zmq, &req.data.send.msg,
-                         req.data.send.flags | ZMQ_DONTWAIT) == -1) {
-      enif_mutex_unlock(socket->mutex);
-      int const error = zmq_errno();
-      if (error != EAGAIN ||
-          (error == EAGAIN && (req.data.send.flags & ZMQ_DONTWAIT))) {
-        const int ret = zmq_msg_close(&req.data.send.msg);
-        assert(ret == 0);
-        return return_zmq_errno(env, error);
-      }
-      // if it fails, use the context thread poll for the send
+  // try send
+  assert(socket->socket_zmq);
+  if (zmq_sendmsg(socket->socket_zmq, &req.data.send.msg,
+                        req.data.send.flags | ZMQ_DONTWAIT) == -1) {
+    enif_mutex_unlock(socket->mutex);
+    int const error = zmq_errno();
+    if (error != EAGAIN ||
+        (error == EAGAIN && (req.data.send.flags & ZMQ_DONTWAIT))) {
+      const int ret = zmq_msg_close(&req.data.send.msg);
+      assert(ret == 0);
+      return return_zmq_errno(env, error);
     }
-    else {
-      polling_thread_send = 0;
-    }
+    // if it fails, use the context thread poll for the send
+  }
+  else {
+    polling_thread_send = 0;
   }
 
   enif_mutex_unlock(socket->mutex);
