@@ -27,7 +27,6 @@
 #endif
 #include "erl_nif.h"
 #include "erl_driver.h"
-#include "vector.h"
 #include <string.h>
 #include <stdio.h>
 #include <assert.h>
