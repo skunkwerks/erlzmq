@@ -28,7 +28,6 @@
 -include_lib("erlzmq.hrl").
 -export([context/0,
          context/1,
-         context/2,
          socket/2,
          bind/2,
          connect/2,
@@ -43,9 +42,7 @@
          setsockopt/3,
          getsockopt/2,
          close/1,
-         close/2,
          term/1,
-         term/2,
          ctx_get/2,
          ctx_set/3,
          curve_keypair/0,
@@ -67,25 +64,14 @@
     erlzmq_sockopt_value/0,
     erlzmq_ctxopt/0]).
 
-%% @equiv context(1, [])
+%% @equiv context(1)
 -spec context() ->
     {ok, erlzmq_context()} |
     erlzmq_error().
 context() ->
-    context(1, []).
-
-%% @equiv context(Threads, []) or context(1, Opts)
--spec context(Arg :: pos_integer() | list()) ->
-    {ok, erlzmq_context()} |
-    erlzmq_error().
-context(Threads) when is_integer(Threads) ->
-    context(Threads, []);
-context(Opts) when is_list(Opts) ->
-    context(1, Opts).
+    context(1).
 
 %% @doc Create a new erlzmq context with the specified number of io threads.
-%% Optionally, the max_sockets may be specified.  Unlike the zeromq interface,
-%% this must be specified when the context is created.
 %% <br />
 %% If the context can be created an 'ok' tuple containing an
 %% {@type erlzmq_context()} handle to the created context is returned;
@@ -97,66 +83,33 @@ context(Opts) when is_list(Opts) ->
 %% <i>For more information see
 %% <a href="http://api.zeromq.org/master:zmq-init">zmq_init</a></i>
 %% @end
--spec context(Threads :: pos_integer(), [{max_sockets, S :: pos_integer}]) ->
+-spec context(Threads :: pos_integer()) ->
     {ok, erlzmq_context()} |
     erlzmq_error().
-context(Threads, Opts) when is_integer(Threads), is_list(Opts) ->
-    erlzmq_nif:context(Threads, Opts).
+context(Threads) when is_integer(Threads) ->
+    erlzmq_nif:context(Threads).
 
 
 %% @doc Create a socket.
 %% <br />
 %% This functions creates a socket of the given
-%% {@link erlzmq_socket_type(). type}, optionally setting it to active mode,
+%% {@link erlzmq_socket_type(). type}
 %% and associates it with the given {@link erlzmq_context(). context}.
 %% <br />
 %% If the socket can be created an 'ok' tuple containing a
 %% {@type erlzmq_socket()} handle to the created socket is returned;
 %% if not, it returns an {@type erlzmq_error()} describing the error.
 %% <br />
-%% In line with Erlang's socket paradigm,  a socket can be either active or
-%% passive. Passive sockets tend to have lower latency and have a higher
-%% throughput for small message sizes. Active sockets on the contrary give
-%% the highest throughput for messages above 32k. A benchmarking tool is
-%% included in the source distribution.<br />
 %% <i>For more information see
 %% <a href="http://api.zeromq.org/master:zmq_socket">zmq_socket</a>.</i>
 %% @end
 -spec socket(Context :: erlzmq_context(),
-             Type :: erlzmq_socket_type() |
-                     list(erlzmq_socket_type() |
-                          {active, boolean()} |
-                          {active_pid, pid()})) ->
+             Type :: erlzmq_socket_type()) ->
                     {ok, erlzmq_socket()} |
                     erlzmq_error().
-socket(Context, Type) when is_atom(Type) ->
-    socket(Context, [Type]);
-socket(Context, [H | T]) when is_atom(H) ->
-    case T of
-        [] ->
-            % active is false by default
-            % (to avoid latency on small messages (messages < 32KB))
-            socket(Context, H, {active, false});
-        [Active] ->
-            socket(Context, H, Active)
-    end;
-socket(Context, [H | [Type]]) when is_tuple(H) ->
-    socket(Context, Type, H).
 
--spec socket(Context :: erlzmq_context(),
-             Type :: erlzmq_socket_type(),
-             {active, boolean()} | {active_pid, pid()}) ->
-                    {ok, erlzmq_socket()} |
-                    erlzmq_error().
-socket(Context, Type, {active, true}) ->
-    true = (Type =/= pub) and (Type =/= push) and (Type =/= xpub),
-    erlzmq_nif:socket(Context, socket_type(Type), 1, self());
-socket(Context, Type, {active_pid, Pid})
-    when is_pid(Pid), node(Pid) =:= node() ->
-    true = (Type =/= pub) and (Type =/= push) and (Type =/= xpub),
-    erlzmq_nif:socket(Context, socket_type(Type), 1, Pid);
-socket(Context, Type, {active, false}) ->
-    erlzmq_nif:socket(Context, socket_type(Type), 0, self()).
+socket(Context, Type) ->
+    erlzmq_nif:socket(Context, socket_type(Type)).
 
 
 %% @doc Accept connections on a socket.
@@ -211,17 +164,7 @@ send(Socket, Binary) when is_binary(Binary) ->
     erlzmq_error().
 send({I, Socket}, Binary, Flags)
     when is_integer(I), is_binary(Binary), is_list(Flags) ->
-    case erlzmq_nif:send(Socket, Binary, sendrecv_flags(Flags)) of
-        Ref when is_reference(Ref) ->
-            receive
-                {Ref, ok} ->
-                    ok;
-                {Ref, {error, _} = Error} ->
-                    Error
-            end;
-        Result ->
-            Result
-    end.
+    erlzmq_nif:send(Socket, Binary, sendrecv_flags(Flags)).
 
 %% @equiv send(Socket, Msg, [])
 %% @doc This function exists for zeromq api compatibility and doesn't
@@ -269,17 +212,7 @@ recv(Socket) ->
     erlzmq_error().
 recv({I, Socket}, Flags)
     when is_integer(I), is_list(Flags) ->
-    case erlzmq_nif:recv(Socket, sendrecv_flags(Flags)) of
-        Ref when is_reference(Ref) ->
-            receive
-                {Ref, {error, _} = Error} ->
-                    Error;
-                {Ref, Result} ->
-                    {ok, Result}
-            end;
-        Result ->
-            Result
-    end.
+    erlzmq_nif:recv(Socket, sendrecv_flags(Flags)).
 
 %% @equiv recv(Socket, 0)
 %% @doc This function exists for zeromq api compatibility and doesn't
@@ -333,70 +266,28 @@ setsockopt({I, Socket}, Name, Value) when is_integer(I), is_atom(Name) ->
 getsockopt({I, Socket}, Name) when is_integer(I), is_atom(Name) ->
     erlzmq_nif:getsockopt(Socket, option_name(Name)).
 
-%% @equiv close(Socket, infinity)
--spec close(Socket :: erlzmq_socket()) ->
-    ok |
-    erlzmq_error().
-close(Socket) ->
-    close(Socket, infinity).
-
 %% @doc Close the given socket.
 %% <br />
 %% <i>For more information see
 %% <a href="http://api.zeromq.org/master:zmq_close">zmq_close</a>.</i>
 %% @end
--spec close(Socket :: erlzmq_socket(),
-            Timeout :: timeout()) ->
+-spec close(Socket :: erlzmq_socket()) ->
     ok |
     erlzmq_error().
-close({I, Socket}, Timeout) when is_integer(I) ->
-    case erlzmq_nif:close(Socket) of
-        Ref when is_reference(Ref) ->
-            receive
-                {Ref, Result} ->
-                    Result
-            after
-                Timeout ->
-                    {error, {timeout, Ref}}
-            end;
-        Result ->
-            Result
-    end.
+close({I, Socket}) when is_integer(I) ->
+    erlzmq_nif:close(Socket).
 
-%% @equiv term(Context, infinity)
--spec term(Context :: erlzmq_context()) ->
-    ok |
-    erlzmq_error().
-term(Context) ->
-    term(Context, infinity).
-
-%% @doc Terminate the given context waiting up to Timeout ms.
+%% @doc Terminate the given context.
 %% <br />
-%% This function should be called after all sockets associated with
-%% the given context have been closed.<br />
-%% If not it will block the given Timeout amount of time.
 %% <i>For more information see
 %% <a href="http://api.zeromq.org/master:zmq_term">zmq_term</a>.</i>
 %% @end
--spec term(Context :: erlzmq_context(),
-           Timeout :: timeout()) ->
+-spec term(Context :: erlzmq_context()) ->
     ok |
-    erlzmq_error() |
-    {error, {timeout, reference()}}.
+    erlzmq_error().
 
-term(Context, Timeout) ->
-    case erlzmq_nif:term(Context) of
-        Ref when is_reference(Ref) ->
-            receive
-                {Ref, Result} ->
-                    Result
-            after
-                Timeout ->
-                    {error, {timeout, Ref}}
-            end;
-        Result ->
-            Result
-    end.
+term(Context) ->
+    erlzmq_nif:term(Context).
 
 %% @doc Get an {@link erlzmq_ctxopt(). option} associated with a context.
 %% <br />
@@ -432,7 +323,7 @@ ctx_set(Context, Name, Value) when is_integer(Value), is_atom(Name) ->
 %% version of the 32-byte keys from curve.
 %% <br />
 %% <i>For more information see
-%% <a href="http://api.zeromq.org/4-0:zmq_curve_keypair">zmq_curve_keypair</a>.</i>
+%% <a href="http://api.zeromq.org/master:zmq_curve_keypair">zmq_curve_keypair</a>.</i>
 %% @end
 -spec curve_keypair() ->
     {ok, binary(), binary()} |

@@ -8,12 +8,12 @@ stream_to_stream_test() ->
     Endpoint = "tcp://127.0.0.1:7432",
 
     % We'll be using this socket in raw mode
-    {ok, To} = erlzmq:socket(C, [stream, {active, false}]),
+    {ok, To} = erlzmq:socket(C, stream),
     ok = erlzmq:setsockopt(To, stream_notify, 1),
     ok = erlzmq:bind(To, Endpoint),
 
     % We'll be using this socket as the other peer
-    {ok, From} = erlzmq:socket(C, [stream, {active, false}]),
+    {ok, From} = erlzmq:socket(C, stream),
     ok = erlzmq:setsockopt(From, linger, 0),
     ok = erlzmq:connect(From, Endpoint),
 

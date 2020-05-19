@@ -12,11 +12,11 @@ immediate_1_test() ->
     {ok, C} = erlzmq:context(),
     Endpoint = "tcp://127.0.0.1:5558",
 
-    {ok, To} = erlzmq:socket(C, [pull, {active, false}]),
+    {ok, To} = erlzmq:socket(C, pull),
     ok = erlzmq:setsockopt(To, linger, 0),
     ok = erlzmq:bind(To, Endpoint),
 
-    {ok, From} = erlzmq:socket(C, [push, {active, false}]),
+    {ok, From} = erlzmq:socket(C, push),
     ok = erlzmq:setsockopt(From, linger, 0),
 
     % This pipe will not connect (provided the ephemeral port is not 5556)
@@ -53,11 +53,11 @@ immediate_2_test() ->
     {ok, C} = erlzmq:context(),
     Endpoint = "tcp://127.0.0.1:7558",
 
-    {ok, To} = erlzmq:socket(C, [pull, {active, false}]),
+    {ok, To} = erlzmq:socket(C, pull),
     ok = erlzmq:setsockopt(To, linger, 0),
     ok = erlzmq:bind(To, Endpoint),
 
-    {ok, From} = erlzmq:socket(C, [push, {active, false}]),
+    {ok, From} = erlzmq:socket(C, push),
     ok = erlzmq:setsockopt(From, linger, 0),
     % Set the key flag
     ok = erlzmq:setsockopt(From, immediate, 1),
@@ -87,11 +87,11 @@ immediate_3_test() ->
     {ok, C} = erlzmq:context(),
     Endpoint = "tcp://127.0.0.1:9558",
 
-    {ok, To} = erlzmq:socket(C, [dealer, {active, false}]),
+    {ok, To} = erlzmq:socket(C, dealer),
     ok = erlzmq:setsockopt(To, linger, 0),
     ok = erlzmq:bind(To, Endpoint),
 
-    {ok, From} = erlzmq:socket(C, [dealer, {active, false}]),
+    {ok, From} = erlzmq:socket(C, dealer),
     ok = erlzmq:setsockopt(From, linger, 0),
     % Set the key flag
     ok = erlzmq:setsockopt(From, immediate, 1),
@@ -115,64 +115,13 @@ immediate_3_test() ->
 
     % Recreate backend socket
 
-    {ok, To1} = erlzmq:socket(C, [dealer, {active, false}]),
+    {ok, To1} = erlzmq:socket(C, dealer),
     ok = erlzmq:setsockopt(To1, linger, 0),
     ok = erlzmq:bind(To1, Endpoint),
 
     % Ping backend to frontend so we know when the connection is up
     ok = erlzmq:send(To1, <<"Hello">>),
     {ok, <<"Hello">>} = erlzmq:recv(From),
-
-    % After the reconnect, should succeed
-    ?assertMatch(ok, erlzmq:send(From, <<"Hello">>, [dontwait])),
-
-    ok = erlzmq:close(From),
-    ok = erlzmq:close(To1),
-    ok = erlzmq:term(C).
-
-immediate_3_active_test() ->
-    {ok, C} = erlzmq:context(),
-    Endpoint = "tcp://127.0.0.1:5658",
-
-    {ok, To} = erlzmq:socket(C, [dealer, {active, false}]),
-    ok = erlzmq:setsockopt(To, linger, 0),
-    ok = erlzmq:bind(To, Endpoint),
-
-    {ok, From} = erlzmq:socket(C, [dealer, {active, true}]),
-    ok = erlzmq:setsockopt(From, linger, 0),
-    % Set the key flag
-    ok = erlzmq:setsockopt(From, immediate, 1),
-
-    % Frontend connects to backend using IMMEDIATE
-    ok = erlzmq:connect(From, Endpoint),
-
-    % Ping backend to frontend so we know when the connection is up
-    ok = erlzmq:send(To, <<"Hello">>),
-    receive
-        {zmq, From, <<"Hello">>, []} -> ok
-    end,
-
-    % Send message from frontend to backend
-    ok = erlzmq:send(From, <<"Hello">>, [dontwait]),
-
-    ok = erlzmq:close(To),
-
-    timer:sleep(100),
-
-    % Send a message, should fail
-    ?assertMatch({error, eagain}, erlzmq:send(From, <<"Hello">>, [dontwait])),
-
-    % Recreate backend socket
-
-    {ok, To1} = erlzmq:socket(C, [dealer, {active, false}]),
-    ok = erlzmq:setsockopt(To1, linger, 0),
-    ok = erlzmq:bind(To1, Endpoint),
-
-    % Ping backend to frontend so we know when the connection is up
-    ok = erlzmq:send(To1, <<"Hello">>),
-    receive
-        {zmq, From, <<"Hello">>, []} -> ok
-    end,
 
     % After the reconnect, should succeed
     ?assertMatch(ok, erlzmq:send(From, <<"Hello">>, [dontwait])),

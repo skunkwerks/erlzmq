@@ -7,10 +7,10 @@ probe_router_router_test() ->
     {ok, C} = erlzmq:context(),
     Endpoint = "tcp://127.0.0.1:5558",
 
-    {ok, To} = erlzmq:socket(C, [router, {active, false}]),
+    {ok, To} = erlzmq:socket(C, router),
     ok = erlzmq:bind(To, Endpoint),
 
-    {ok, From} = erlzmq:socket(C, [router, {active, false}]),
+    {ok, From} = erlzmq:socket(C, router),
     ok = erlzmq:setsockopt(From, routing_id, <<"X">>),
     ok = erlzmq:setsockopt(From, probe_router, 1),
     ok = erlzmq:connect(From, Endpoint),
@@ -36,10 +36,10 @@ probe_router_dealer_test() ->
     {ok, C} = erlzmq:context(),
     Endpoint = "tcp://127.0.0.1:5558",
 
-    {ok, To} = erlzmq:socket(C, [router, {active, false}]),
+    {ok, To} = erlzmq:socket(C, router),
     ok = erlzmq:bind(To, Endpoint),
 
-    {ok, From} = erlzmq:socket(C, [dealer, {active, false}]),
+    {ok, From} = erlzmq:socket(C, dealer),
     ok = erlzmq:setsockopt(From, routing_id, <<"X">>),
     ok = erlzmq:setsockopt(From, probe_router, 1),
     ok = erlzmq:connect(From, Endpoint),

@@ -7,7 +7,7 @@ no_linger_test() ->
     {ok, C} = erlzmq:context(),
     Endpoint = "tcp://127.0.0.1:5558",
 
-    {ok, From} = erlzmq:socket(C, [push, {active, false}]),
+    {ok, From} = erlzmq:socket(C, push),
     ok = erlzmq:setsockopt(From, linger, 0),
     ok = erlzmq:connect(From, Endpoint),
 
@@ -15,7 +15,7 @@ no_linger_test() ->
     ok = erlzmq:close(From),
     timer:sleep(100),
 
-    {ok, To} = erlzmq:socket(C, [pull, {active, false}]),
+    {ok, To} = erlzmq:socket(C, pull),
     ok = erlzmq:bind(To, Endpoint),
 
     ok = erlzmq:setsockopt(To, rcvtimeo, 200),
@@ -28,7 +28,7 @@ linger_infinite_test() ->
     {ok, C} = erlzmq:context(),
     Endpoint = "tcp://127.0.0.1:5558",
 
-    {ok, From} = erlzmq:socket(C, [push, {active, false}]),
+    {ok, From} = erlzmq:socket(C, push),
     ok = erlzmq:setsockopt(From, linger, -1),
     ok = erlzmq:connect(From, Endpoint),
 
@@ -36,7 +36,7 @@ linger_infinite_test() ->
     ok = erlzmq:close(From),    
     timer:sleep(100),
 
-    {ok, To} = erlzmq:socket(C, [pull, {active, false}]),
+    {ok, To} = erlzmq:socket(C, pull),
     ok = erlzmq:bind(To, Endpoint),
 
     ?assertEqual({ok, <<>>}, erlzmq:recv(To, [])),
@@ -48,7 +48,7 @@ linger_finite_receive_before_test() ->
     {ok, C} = erlzmq:context(),
     Endpoint = "tcp://127.0.0.1:5558",
 
-    {ok, From} = erlzmq:socket(C, [push, {active, false}]),
+    {ok, From} = erlzmq:socket(C, push),
     ok = erlzmq:setsockopt(From, linger, 200),
     ok = erlzmq:connect(From, Endpoint),
 
@@ -56,7 +56,7 @@ linger_finite_receive_before_test() ->
     ok = erlzmq:close(From),
     timer:sleep(100),
 
-    {ok, To} = erlzmq:socket(C, [pull, {active, false}]),
+    {ok, To} = erlzmq:socket(C, pull),
     ok = erlzmq:bind(To, Endpoint),
 
     ?assertEqual({ok, <<>>}, erlzmq:recv(To, [])),
@@ -68,7 +68,7 @@ linger_finite_receive_after_test() ->
     {ok, C} = erlzmq:context(),
     Endpoint = "tcp://127.0.0.1:5558",
 
-    {ok, From} = erlzmq:socket(C, [push, {active, false}]),
+    {ok, From} = erlzmq:socket(C, push),
     ok = erlzmq:setsockopt(From, linger, 200),
     ok = erlzmq:connect(From, Endpoint),
 
@@ -76,7 +76,7 @@ linger_finite_receive_after_test() ->
     ok = erlzmq:close(From),
     timer:sleep(300),
 
-    {ok, To} = erlzmq:socket(C, [pull, {active, false}]),
+    {ok, To} = erlzmq:socket(C, pull),
     ok = erlzmq:bind(To, Endpoint),
 
     ok = erlzmq:setsockopt(To, rcvtimeo, 200),
@@ -90,7 +90,7 @@ linger_blocks_term_test() ->
     {ok, C2} = erlzmq:context(),
     Endpoint = "tcp://127.0.0.1:5558",
 
-    {ok, From} = erlzmq:socket(C1, [push, {active, false}]),
+    {ok, From} = erlzmq:socket(C1, push),
     ok = erlzmq:setsockopt(From, linger, -1),
     ok = erlzmq:connect(From, Endpoint),
 
@@ -111,7 +111,7 @@ linger_blocks_term_test() ->
         100 -> ok
     end,
 
-    {ok, To} = erlzmq:socket(C2, [pull, {active, false}]),
+    {ok, To} = erlzmq:socket(C2, pull),
     ok = erlzmq:bind(To, Endpoint),
 
     ?assertEqual({ok, <<>>}, erlzmq:recv(To, [])),

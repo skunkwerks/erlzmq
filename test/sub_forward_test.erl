@@ -8,16 +8,16 @@ sub_forward_test() ->
     Endpoint1 = "tcp://127.0.0.1:5558",
     Endpoint2 = "tcp://127.0.0.1:5559",
 
-    {ok, Xpub} = erlzmq:socket(C, [xpub, {active, false}]),
+    {ok, Xpub} = erlzmq:socket(C, xpub),
     ok = erlzmq:bind(Xpub, Endpoint1),
 
-    {ok, Xsub} = erlzmq:socket(C, [xsub, {active, false}]),
+    {ok, Xsub} = erlzmq:socket(C, xsub),
     ok = erlzmq:bind(Xsub, Endpoint2),
 
-    {ok, Pub} = erlzmq:socket(C, [pub, {active, false}]),
+    {ok, Pub} = erlzmq:socket(C, pub),
     ok = erlzmq:connect(Pub, Endpoint2),
 
-    {ok, Sub} = erlzmq:socket(C, [sub, {active, false}]),
+    {ok, Sub} = erlzmq:socket(C, sub),
     ok = erlzmq:connect(Sub, Endpoint1),
 
     % Subscribe for all messages.
