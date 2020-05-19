@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/lukaszsamson/erlzmq.svg?branch=master)](https://travis-ci.com/lukaszsamson/erlzmq)
+
 erlzmq
 =======
 Dirty NIF based Erlang bindings for the ZeroMQ messaging library.
