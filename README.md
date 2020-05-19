@@ -1,8 +1,12 @@
 erlzmq
 =======
-NIF based Erlang bindings for the ZeroMQ messaging library.
+Dirty NIF based Erlang bindings for the ZeroMQ messaging library.
+
+Forked from erlang solutions erlzmq project.
 
 Forked from the erlzmq2 project.
+
+Copyright (c) 2020 Łukasz Samson
 
 Copyright (c) 2019 erlang solutions ltd
 
@@ -18,9 +22,9 @@ Downloading
 -----------
 
 The erlzmq source code can be found on
-[GitHub](https://github.com/esl/erlzmq)
+[GitHub](https://github.com/lukaszsamson/erlzmq)
 
-    $ git clone http://github.com/esl/erlzmq.git
+    $ git clone http://github.com/lukaszsamson/erlzmq.git
 
 Building
 --------
@@ -38,31 +42,20 @@ Build the code
 
 Build the docs
 
-    $ rebar3 docs
+    $ rebar3 edoc
 
 Run the test suite
 
     $ rebar3 eunit
 
-Run the benchmarks (requires [python](http://www.python.org) and
-[matplotlib](http://matplotlib.sourceforge.net/))
-
-    TODO
-
-This will run performance tests and output png graphs in the graphs
-directory.
-
 Architecture
 ------------
 
-The bindings use Erlang's
+The bindings use Erlang's Dirty
 [NIF (native implemented functions)](http://www.erlang.org/doc/man/erl_nif.html)
-interface to achieve the best performance. One extra OS thread and one
-pair of inproc sockets by context are used to simulate blocking recv
-calls without affecting the Erlang virtual machine's responsiveness.
+interface to achieve the best performance.
 
 License
 -------
 
 The project is released under the MIT license.
-

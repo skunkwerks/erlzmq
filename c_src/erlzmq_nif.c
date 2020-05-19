@@ -1,6 +1,8 @@
 // -*- coding:utf-8;Mode:C;tab-width:2;c-basic-offset:2;indent-tabs-mode:nil -*-
 // ex: set softtabstop=2 tabstop=2 shiftwidth=2 expandtab fileencoding=utf-8:
 //
+// Copyright (c) 2020 Łukasz Samson
+// Copyright (c) 2019 erlang solutions ltd
 // Copyright (c) 2011 Yurii Rashkovskii, Evax Software and Michael Truog
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
