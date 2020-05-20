@@ -32,7 +32,9 @@
          context/1,
          socket/2,
          bind/2,
+         unbind/2,
          connect/2,
+         disconnect/2,
          send/2,
          send/3,
          sendmsg/2,
@@ -130,6 +132,22 @@ bind({I, Socket}, Endpoint)
     when is_integer(I), is_binary(Endpoint) ->
     bind({I, Socket}, binary_to_list(Endpoint)).
 
+%% @doc Stop accept connections on a socket.
+%% <br />
+%% <i>For more information see
+%% <a href="http://api.zeromq.org/master:zmq_unbind">zmq_unbind</a>.</i>
+%% @end
+-spec unbind(Socket :: erlzmq_socket(),
+           Endpoint :: erlzmq_endpoint()) ->
+    ok |
+    erlzmq_error().
+unbind({I, Socket}, Endpoint)
+    when is_integer(I), is_list(Endpoint) ->
+    erlzmq_nif:unbind(Socket, Endpoint);
+unbind({I, Socket}, Endpoint)
+    when is_integer(I), is_binary(Endpoint) ->
+    unbind({I, Socket}, binary_to_list(Endpoint)).
+
 %% @doc Connect a socket.
 %% <br />
 %% <i>For more information see
@@ -145,6 +163,22 @@ connect({I, Socket}, Endpoint)
 connect({I, Socket}, Endpoint)
     when is_integer(I), is_binary(Endpoint) ->
     connect({I, Socket}, binary_to_list(Endpoint)).
+
+%% @doc Disonnect a socket.
+%% <br />
+%% <i>For more information see
+%% <a href="http://api.zeromq.org/master:zmq_disconnect">zmq_disconnect</a>.</i>
+%% @end
+-spec disconnect(Socket :: erlzmq_socket(),
+              Endpoint :: erlzmq_endpoint()) ->
+    ok |
+    erlzmq_error().
+disconnect({I, Socket}, Endpoint)
+    when is_integer(I), is_list(Endpoint) ->
+    erlzmq_nif:disconnect(Socket, Endpoint);
+disconnect({I, Socket}, Endpoint)
+    when is_integer(I), is_binary(Endpoint) ->
+    disconnect({I, Socket}, binary_to_list(Endpoint)).
 
 %% @equiv send(Socket, Msg, [])
 -spec send(erlzmq_socket(),
