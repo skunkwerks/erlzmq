@@ -65,6 +65,7 @@ typedef struct erlzmq_socket {
   void * socket_zmq;
   ErlNifMutex * mutex;
   int status;
+  int socket_type;
 } erlzmq_socket_t;
 
 #define ERLZMQ_SOCKET_STATUS_READY   0
@@ -197,6 +198,7 @@ NIF(erlzmq_nif_socket)
   socket->mutex = 0;
   socket->status = ERLZMQ_SOCKET_STATUS_CLOSED;
   socket->socket_zmq = 0;
+  socket->socket_type = socket_type;
 
   assert(context->mutex);
   enif_mutex_lock(context->mutex);
@@ -207,7 +209,6 @@ NIF(erlzmq_nif_socket)
   }
 
   socket->socket_index = context->socket_index++;
-  assert(context->status == ERLZMQ_CONTEXT_STATUS_READY);
   assert(context->context_zmq);
   socket->socket_zmq = zmq_socket(context->context_zmq, socket_type);
   enif_mutex_unlock(context->mutex);
