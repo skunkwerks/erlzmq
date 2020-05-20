@@ -95,6 +95,7 @@ NIF(erlzmq_nif_ctx_set);
 NIF(erlzmq_nif_curve_keypair);
 NIF(erlzmq_nif_z85_decode);
 NIF(erlzmq_nif_z85_encode);
+NIF(erlzmq_nif_has);
 NIF(erlzmq_nif_version);
 
 static ERL_NIF_TERM return_zmq_errno(ErlNifEnv* env, int const value);
@@ -135,6 +136,8 @@ static ErlNifFunc nif_funcs[] =
   {"z85_decode", 1, erlzmq_nif_z85_decode, 0},
   // non blocking
   {"z85_encode", 1, erlzmq_nif_z85_encode, 0},
+  // non blocking
+  {"has", 1, erlzmq_nif_has, 0},
   // non blocking
   {"version", 0, erlzmq_nif_version, 0}
 };
@@ -1242,6 +1245,40 @@ NIF(erlzmq_nif_z85_encode)
   }
   free(z85buf);
   return ret;
+}
+
+NIF(erlzmq_nif_has)
+{
+  unsigned capability_length;
+
+  if (! enif_get_atom_length(env, argv[0], &capability_length, ERL_NIF_LATIN1)) {
+    return enif_make_badarg(env);
+  }
+
+  char * capability = (char *) malloc(capability_length + 1);
+  assert(capability);
+  if (! enif_get_atom(env, argv[0], capability, capability_length + 1,
+                        ERL_NIF_LATIN1)) {
+    free(capability);
+    return enif_make_badarg(env);
+  }
+
+  ERL_NIF_TERM result;
+#ifdef ZMQ_HAS_CAPABILITIES
+  if (zmq_has(capability) == 1) {
+    result = enif_make_atom(env, "true");
+  }
+  else {
+    result = enif_make_atom(env, "false");
+  }
+#else
+  // version < 4.1
+  result = enif_make_atom(env, "unknown");
+#endif
+
+  free(capability);
+
+  return result;
 }
 
 NIF(erlzmq_nif_version)

@@ -52,6 +52,7 @@
          curve_keypair/0,
          z85_decode/1,
          z85_encode/1,
+         has/1,
          version/0]).
 -export_type([
     erlzmq_socket_type/0,
@@ -392,6 +393,16 @@ z85_decode(Z85) ->
     erlzmq_error().
 z85_encode(Binary) ->
     erlzmq_nif:z85_encode(Binary).
+
+%% @doc Checks if 0MQ library has given capability.
+%% <br />
+%% <i>For more information see
+%% <a href="http://api.zeromq.org/master:zmq_has">zmq_has</a>.</i>
+%% @end
+-spec has(Capability :: erlzmq_capability()) -> boolean() | unknown.
+has(Capability)
+    when is_atom(Capability) ->
+    erlzmq_nif:has(Capability).
 
 %% @doc Returns the 0MQ library version.
 %% @end

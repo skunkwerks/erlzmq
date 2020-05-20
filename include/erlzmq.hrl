@@ -298,3 +298,13 @@
     socket_limit |
     max_sockets |
     ipv6.
+
+%% 0MQ library capabilities {@link erlzmq:has/1. has/1}.
+-type erlzmq_capability() ::
+    ipc |
+    pgm |
+    tipc |
+    norm |
+    curve |
+    gssapi |
+    draft.
