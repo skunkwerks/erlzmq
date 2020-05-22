@@ -376,7 +376,7 @@ curve_keypair() ->
 %% <a href="http://api.zeromq.org/master:zmq-z85-decode">zmq_z85_decode</a>.</i>
 %% @end
 -spec z85_decode(binary()) ->
-    {ok, binary(), binary()} |
+    {ok, binary()} |
     erlzmq_error().
 z85_decode(Z85) ->
     erlzmq_nif:z85_decode(Z85).
@@ -389,7 +389,7 @@ z85_decode(Z85) ->
 %% <a href="http://api.zeromq.org/master:zmq-z85-encode">zmq_z85_encode</a>.</i>
 %% @end
 -spec z85_encode(binary()) ->
-    {ok, binary(), binary()} |
+    {ok, binary()} |
     erlzmq_error().
 z85_encode(Binary) ->
     erlzmq_nif:z85_encode(Binary).
@@ -399,7 +399,8 @@ z85_encode(Binary) ->
 %% <i>For more information see
 %% <a href="http://api.zeromq.org/master:zmq_has">zmq_has</a>.</i>
 %% @end
--spec has(Capability :: erlzmq_capability()) -> boolean() | unknown.
+-spec has(Capability :: erlzmq_capability()) -> boolean() | unknown |
+    erlzmq_error().
 has(Capability)
     when is_atom(Capability) ->
     erlzmq_nif:has(Capability).
