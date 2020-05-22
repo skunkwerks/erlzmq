@@ -171,20 +171,24 @@ NIF(erlzmq_nif_context)
 
   erlzmq_context_t * context = (erlzmq_context_t *)enif_alloc_resource(erlzmq_nif_resource_context,
                                                    sizeof(erlzmq_context_t));
-  assert(context);
+  if (!context) {
+    return return_zmq_errno(env, ENOMEM);
+  }
+
   context->status = ERLZMQ_CONTEXT_STATUS_TERMINATED;
-  context->mutex = 0;
+  context->context_zmq = 0;
+  context->mutex = enif_mutex_create("erlzmq_context_t_mutex");
+  if (!context->mutex) {
+    enif_release_resource(context);
+    return return_zmq_errno(env, ENOMEM);
+  }
   context->context_zmq = zmq_init(thread_count);
   if (! context->context_zmq) {
     enif_release_resource(context);
     return return_zmq_errno(env, zmq_errno());
   }
 
-  context->mutex = enif_mutex_create("erlzmq_context_t_mutex");
-  assert(context->mutex);
-
   context->socket_index = 0;
-
   context->status = ERLZMQ_CONTEXT_STATUS_READY;
 
   return enif_make_tuple2(env, enif_make_atom(env, "ok"),
@@ -211,7 +215,9 @@ NIF(erlzmq_nif_socket)
 
   erlzmq_socket_t * socket = (erlzmq_socket_t *)enif_alloc_resource(erlzmq_nif_resource_socket,
                                                  sizeof(erlzmq_socket_t));
-  assert(socket);
+  if (!socket) {
+    return return_zmq_errno(env, ENOMEM);
+  }
   socket->context = context;
   socket->socket_zmq = 0;
   socket->mutex = 0;
@@ -242,23 +248,38 @@ NIF(erlzmq_nif_socket)
   
   sprintf(buffer, "erlzmq_socket_t_mutex_%" PRIu64, socket->socket_index);
   socket->mutex = enif_mutex_create(buffer);
-  assert(socket->mutex);
+  if (!socket->mutex) {
+    enif_release_resource(socket);
+    return return_zmq_errno(env, ENOMEM);
+  }
 
   sprintf(buffer, "erlzmq_socket_t_socket_command_mutex_%" PRIu64, socket->socket_index);
   socket->socket_command_mutex = enif_mutex_create(buffer);
-  assert(socket->socket_command_mutex);
+  if (!socket->socket_command_mutex) {
+    enif_release_resource(socket);
+    return return_zmq_errno(env, ENOMEM);
+  }
 
   sprintf(buffer, "erlzmq_socket_t_socket_command_cond_%" PRIu64, socket->socket_index);
   socket->socket_command_cond = enif_cond_create(buffer);
-  assert(socket->socket_command_cond);
+  if (!socket->socket_command_cond) {
+    enif_release_resource(socket);
+    return return_zmq_errno(env, ENOMEM);
+  }
 
   sprintf(buffer, "erlzmq_socket_t_socket_command_result_mutex_%" PRIu64, socket->socket_index);
   socket->socket_command_result_mutex = enif_mutex_create(buffer);
-  assert(socket->socket_command_result_mutex);
+  if (!socket->socket_command_result_mutex) {
+    enif_release_resource(socket);
+    return return_zmq_errno(env, ENOMEM);
+  }
 
   sprintf(buffer, "erlzmq_socket_t_socket_command_result_cond_%" PRIu64, socket->socket_index);
   socket->socket_command_result_cond = enif_cond_create(buffer);
-  assert(socket->socket_command_result_cond);
+  if (!socket->socket_command_result_cond) {
+    enif_release_resource(socket);
+    return return_zmq_errno(env, ENOMEM);
+  }
 
   sprintf(buffer, "erlzmq_socket_t_thread_%" PRIu64, socket->socket_index);
 
@@ -351,7 +372,9 @@ SOCKET_COMMAND(erlzmq_socket_command_bind)
   }
 
   char * endpoint = (char *) malloc(endpoint_length + 1);
-  assert(endpoint);
+  if (!endpoint) {
+    return return_zmq_errno(env, ENOMEM);
+  }
   if (! enif_get_string(env, argv[0], endpoint, endpoint_length + 1,
                         ERL_NIF_LATIN1)) {
     free(endpoint);
@@ -382,7 +405,9 @@ SOCKET_COMMAND(erlzmq_socket_command_unbind)
   }
 
   char * endpoint = (char *) malloc(endpoint_length + 1);
-  assert(endpoint);
+  if (!endpoint) {
+    return return_zmq_errno(env, ENOMEM);
+  }
   if (! enif_get_string(env, argv[0], endpoint, endpoint_length + 1,
                         ERL_NIF_LATIN1)) {
     free(endpoint);
@@ -413,7 +438,9 @@ SOCKET_COMMAND(erlzmq_socket_command_connect)
   }
 
   char * endpoint = (char *) malloc(endpoint_length + 1);
-  assert(endpoint);
+  if (!endpoint) {
+    return return_zmq_errno(env, ENOMEM);
+  }
   if (! enif_get_string(env, argv[0], endpoint, endpoint_length + 1,
                         ERL_NIF_LATIN1)) {
     free(endpoint);
@@ -444,7 +471,9 @@ SOCKET_COMMAND(erlzmq_socket_command_disconnect)
   }
 
   char * endpoint = (char *) malloc(endpoint_length + 1);
-  assert(endpoint);
+  if (!endpoint) {
+    return return_zmq_errno(env, ENOMEM);
+  }
   if (! enif_get_string(env, argv[0], endpoint, endpoint_length + 1,
                         ERL_NIF_LATIN1)) {
     free(endpoint);
@@ -732,7 +761,9 @@ SOCKET_COMMAND(erlzmq_socket_command_getsockopt)
         return return_zmq_errno(env, zmq_errno());
       }
       int alloc_success = enif_alloc_binary(option_len, &value_binary);
-      assert(alloc_success);
+      if (!alloc_success) {
+        return return_zmq_errno(env, ENOMEM);
+      }
       memcpy(value_binary.data, option_value, option_len);
       return enif_make_tuple2(env, enif_make_atom(env, "ok"),
                               enif_make_binary(env, &value_binary));
@@ -868,7 +899,11 @@ SOCKET_COMMAND(erlzmq_socket_command_recv)
   else {
     ErlNifBinary binary;
     int alloc_success = enif_alloc_binary(zmq_msg_size(&msg), &binary);
-    assert(alloc_success);
+    if (!alloc_success) {
+      const int ret = zmq_msg_close(&msg);
+      assert(ret == 0);
+      return return_zmq_errno(env, ENOMEM);
+    }
     void * data = zmq_msg_data(&msg);
     assert(data);
     memcpy(binary.data, data, zmq_msg_size(&msg));
@@ -1075,9 +1110,14 @@ NIF(erlzmq_nif_curve_keypair)
     return return_zmq_errno(env, zmq_errno());
   }
   int alloc_success = enif_alloc_binary(40, &pub_bin);
-  assert(alloc_success);
+  if (!alloc_success) {
+      return return_zmq_errno(env, ENOMEM);
+  }
   alloc_success = enif_alloc_binary(40, &sec_bin);
-  assert(alloc_success);
+  if (!alloc_success) {
+      enif_release_binary(&pub_bin);
+      return return_zmq_errno(env, ENOMEM);
+  }
   memcpy(pub_bin.data, public, 40);
   memcpy(sec_bin.data, secret, 40);
   return enif_make_tuple3(env, enif_make_atom(env, "ok"),
@@ -1099,14 +1139,19 @@ NIF(erlzmq_nif_z85_decode)
   size_t z85_size = value_binary.size;
   size_t dec_size = z85_size / 5 * 4;
   char *z85buf = (char*) malloc(z85_size+1);
-  assert(z85buf);
+  if (!z85buf) {
+      return return_zmq_errno(env, ENOMEM);
+  }
   memcpy(z85buf, value_binary.data, value_binary.size);
   z85buf[value_binary.size] = 0;
 
   ErlNifBinary dec_bin;
   ERL_NIF_TERM ret;
   int alloc_success = enif_alloc_binary(dec_size, &dec_bin);
-  assert(alloc_success);
+  if (!alloc_success) {
+      free(z85buf);
+      return return_zmq_errno(env, ENOMEM);
+  }
   if (zmq_z85_decode (dec_bin.data, z85buf) == NULL) {
     ret = return_zmq_errno(env, zmq_errno());
   } else {
@@ -1132,7 +1177,9 @@ NIF(erlzmq_nif_z85_encode)
 
   // need to accomodate NULL terminator
   char *z85buf = (char*) malloc(enc_size+1);
-  assert(z85buf);
+  if (!z85buf) {
+    return return_zmq_errno(env, ENOMEM);
+  }
 
   ERL_NIF_TERM ret;
 
@@ -1141,7 +1188,11 @@ NIF(erlzmq_nif_z85_encode)
   } else {
     ErlNifBinary enc_bin;
     int alloc_success = enif_alloc_binary(enc_size, &enc_bin);
-    assert(alloc_success);
+    if (!alloc_success) {
+      free(z85buf);
+      return return_zmq_errno(env, ENOMEM);
+    }
+
     // drop NULL terminator
     memcpy(enc_bin.data, z85buf, enc_size);
     ret = enif_make_tuple2(env, enif_make_atom(env, "ok"),
@@ -1160,7 +1211,9 @@ NIF(erlzmq_nif_has)
   }
 
   char * capability = (char *) malloc(capability_length + 1);
-  assert(capability);
+  if (!capability) {
+    return return_zmq_errno(env, ENOMEM);
+  }
   if (! enif_get_atom(env, argv[0], capability, capability_length + 1,
                         ERL_NIF_LATIN1)) {
     free(capability);
