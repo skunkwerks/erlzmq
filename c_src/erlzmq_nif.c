@@ -1468,6 +1468,15 @@ static void socket_destructor(ErlNifEnv * env, erlzmq_socket_t * socket) {
     assert(0);
   }
 
+  if (socket->socket_thread) {
+    int value_errno = enif_thread_join(socket->socket_thread, NULL);
+    if (value_errno != 0) {
+      fprintf(stderr, "unable to join socket thread %" PRIu64 ": %s\n", socket->socket_index, strerror(value_errno));
+      assert(0);
+    }
+    socket->socket_thread = 0;
+  }
+
   if (socket->mutex) {
     enif_mutex_destroy(socket->mutex);
     socket->mutex = 0;
@@ -1491,15 +1500,6 @@ static void socket_destructor(ErlNifEnv * env, erlzmq_socket_t * socket) {
   if (socket->socket_command_result_cond) {
     enif_cond_destroy(socket->socket_command_result_cond);
     socket->socket_command_result_cond = 0;
-  }
-
-  if (socket->socket_thread) {
-    int value_errno = enif_thread_join(socket->socket_thread, NULL);
-    if (value_errno != 0) {
-      fprintf(stderr, "unable to join socket thread %" PRIu64 ": %s\n", socket->socket_index, strerror(value_errno));
-      assert(0);
-    }
-    socket->socket_thread = 0;
   }
 }
 
