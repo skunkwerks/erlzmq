@@ -128,7 +128,7 @@ socket(Context, Type) ->
     erlzmq_error().
 bind({I, Socket}, Endpoint)
     when is_integer(I), is_list(Endpoint) ->
-    erlzmq_nif:bind(Socket, Endpoint);
+    erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_BIND, {Endpoint});
 bind({I, Socket}, Endpoint)
     when is_integer(I), is_binary(Endpoint) ->
     bind({I, Socket}, binary_to_list(Endpoint)).
@@ -144,7 +144,7 @@ bind({I, Socket}, Endpoint)
     erlzmq_error().
 unbind({I, Socket}, Endpoint)
     when is_integer(I), is_list(Endpoint) ->
-    erlzmq_nif:unbind(Socket, Endpoint);
+    erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_UNBIND, {Endpoint});
 unbind({I, Socket}, Endpoint)
     when is_integer(I), is_binary(Endpoint) ->
     unbind({I, Socket}, binary_to_list(Endpoint)).
@@ -160,7 +160,7 @@ unbind({I, Socket}, Endpoint)
     erlzmq_error().
 connect({I, Socket}, Endpoint)
     when is_integer(I), is_list(Endpoint) ->
-    erlzmq_nif:connect(Socket, Endpoint);
+    erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_CONNECT, {Endpoint});
 connect({I, Socket}, Endpoint)
     when is_integer(I), is_binary(Endpoint) ->
     connect({I, Socket}, binary_to_list(Endpoint)).
@@ -176,7 +176,7 @@ connect({I, Socket}, Endpoint)
     erlzmq_error().
 disconnect({I, Socket}, Endpoint)
     when is_integer(I), is_list(Endpoint) ->
-    erlzmq_nif:disconnect(Socket, Endpoint);
+    erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_DISCONNECT, {Endpoint});
 disconnect({I, Socket}, Endpoint)
     when is_integer(I), is_binary(Endpoint) ->
     disconnect({I, Socket}, binary_to_list(Endpoint)).
@@ -201,7 +201,7 @@ send(Socket, Binary) when is_binary(Binary) ->
     erlzmq_error().
 send({I, Socket}, Binary, Flags)
     when is_integer(I), is_binary(Binary), is_list(Flags) ->
-    erlzmq_nif:send(Socket, Binary, sendrecv_flags(Flags)).
+    erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_SEND, {Binary, sendrecv_flags(Flags)}).
 
 %% @equiv send(Socket, Msg, [])
 %% @doc This function exists for zeromq api compatibility and doesn't
@@ -249,7 +249,7 @@ recv(Socket) ->
     erlzmq_error().
 recv({I, Socket}, Flags)
     when is_integer(I), is_list(Flags) ->
-    erlzmq_nif:recv(Socket, sendrecv_flags(Flags)).
+    erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_RECV, {sendrecv_flags(Flags)}).
 
 %% @equiv recv(Socket, 0)
 %% @doc This function exists for zeromq api compatibility and doesn't
@@ -289,7 +289,7 @@ recvmsg(Socket, Flags) ->
 setsockopt(Socket, Name, Value) when is_list(Value) ->
     setsockopt(Socket, Name, erlang:list_to_binary(Value));
 setsockopt({I, Socket}, Name, Value) when is_integer(I), is_atom(Name) ->
-    erlzmq_nif:setsockopt(Socket, option_name(Name), Value).
+    erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_SETSOCKOPT, {option_name(Name), Value}).
 
 %% @doc Get an {@link erlzmq_sockopt(). option} associated with a socket.
 %% <br />
@@ -301,7 +301,7 @@ setsockopt({I, Socket}, Name, Value) when is_integer(I), is_atom(Name) ->
     {ok, erlzmq_sockopt_value()} |
     erlzmq_error().
 getsockopt({I, Socket}, Name) when is_integer(I), is_atom(Name) ->
-    erlzmq_nif:getsockopt(Socket, option_name(Name)).
+    erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_GETSOCKOPT, {option_name(Name)}).
 
 %% @doc Close the given socket.
 %% <br />
@@ -312,7 +312,7 @@ getsockopt({I, Socket}, Name) when is_integer(I), is_atom(Name) ->
     ok |
     erlzmq_error().
 close({I, Socket}) when is_integer(I) ->
-    erlzmq_nif:close(Socket).
+    erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_CLOSE, {}).
 
 %% @doc Terminate the given context.
 %% <br />

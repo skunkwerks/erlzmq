@@ -59,13 +59,29 @@ typedef struct erlzmq_context {
   int status;
 } erlzmq_context_t;
 
+struct erlzmq_socket;
+
+typedef struct erlzmq_socket_command {
+  ERL_NIF_TERM (*name)(struct erlzmq_socket * socket, ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+  ErlNifEnv* env;
+  int argc;
+  const ERL_NIF_TERM *argv;
+} erlzmq_socket_command_t;
+
 typedef struct erlzmq_socket {
   erlzmq_context_t * context;
   uint64_t socket_index;
-  void * socket_zmq;
   ErlNifMutex * mutex;
   int status;
   int socket_type;
+  void* socket_zmq;
+  ErlNifTid socket_thread;
+  erlzmq_socket_command_t socket_command;
+  ERL_NIF_TERM socket_command_result;
+  ErlNifCond * socket_command_cond;
+  ErlNifMutex * socket_command_mutex;
+  ErlNifCond * socket_command_result_cond;
+  ErlNifMutex * socket_command_result_mutex;
 } erlzmq_socket_t;
 
 #define ERLZMQ_SOCKET_STATUS_READY   0
@@ -79,17 +95,21 @@ typedef struct erlzmq_socket {
 #define NIF(name) \
   ERL_NIF_TERM name(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
+#define SOCKET_COMMAND(name) \
+  ERL_NIF_TERM name(erlzmq_socket_t* socket, ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+
 NIF(erlzmq_nif_context);
 NIF(erlzmq_nif_socket);
-NIF(erlzmq_nif_bind);
-NIF(erlzmq_nif_unbind);
-NIF(erlzmq_nif_connect);
-NIF(erlzmq_nif_disconnect);
-NIF(erlzmq_nif_setsockopt);
-NIF(erlzmq_nif_getsockopt);
-NIF(erlzmq_nif_send);
-NIF(erlzmq_nif_recv);
-NIF(erlzmq_nif_close);
+NIF(erlzmq_nif_socket_command);
+SOCKET_COMMAND(erlzmq_socket_command_bind);
+SOCKET_COMMAND(erlzmq_socket_command_unbind);
+SOCKET_COMMAND(erlzmq_socket_command_connect);
+SOCKET_COMMAND(erlzmq_socket_command_disconnect);
+SOCKET_COMMAND(erlzmq_socket_command_setsockopt);
+SOCKET_COMMAND(erlzmq_socket_command_getsockopt);
+SOCKET_COMMAND(erlzmq_socket_command_send);
+SOCKET_COMMAND(erlzmq_socket_command_recv);
+SOCKET_COMMAND(erlzmq_socket_command_close);
 NIF(erlzmq_nif_term);
 NIF(erlzmq_nif_ctx_get);
 NIF(erlzmq_nif_ctx_set);
@@ -100,31 +120,16 @@ NIF(erlzmq_nif_has);
 NIF(erlzmq_nif_version);
 
 static ERL_NIF_TERM return_zmq_errno(ErlNifEnv* env, int const value);
+static void clear_socket_command(erlzmq_socket_t *socket);
+static void* socket_thread(erlzmq_socket_t *socket);
 
-static ErlNifFunc nif_funcs[] =
-{
+static ErlNifFunc nif_funcs[] = {
   // non blocking
   {"context", 1, erlzmq_nif_context, 0},
   // can block on context mutex
   {"socket", 2, erlzmq_nif_socket, ERL_NIF_DIRTY_JOB_IO_BOUND},
   // can block on socket mutex
-  {"bind", 2, erlzmq_nif_bind, ERL_NIF_DIRTY_JOB_IO_BOUND},
-  // can block on socket mutex
-  {"unbind", 2, erlzmq_nif_unbind, ERL_NIF_DIRTY_JOB_IO_BOUND},
-  // can block on socket mutex
-  {"connect", 2, erlzmq_nif_connect, ERL_NIF_DIRTY_JOB_IO_BOUND},
-  // can block on socket mutex
-  {"disconnect", 2, erlzmq_nif_disconnect, ERL_NIF_DIRTY_JOB_IO_BOUND},
-  // can block on socket mutex
-  {"setsockopt", 3, erlzmq_nif_setsockopt, ERL_NIF_DIRTY_JOB_IO_BOUND},
-  // can block on socket mutex
-  {"getsockopt", 2, erlzmq_nif_getsockopt, ERL_NIF_DIRTY_JOB_IO_BOUND},
-  // can block on zmq_send or socket mutex
-  {"send", 3, erlzmq_nif_send, ERL_NIF_DIRTY_JOB_IO_BOUND},
-  // can block on zmq_recv or socket mutex
-  {"recv", 2, erlzmq_nif_recv, ERL_NIF_DIRTY_JOB_IO_BOUND},
-  // can block on socket mutex
-  {"close", 1, erlzmq_nif_close, ERL_NIF_DIRTY_JOB_IO_BOUND},
+  {"socket_command", 3, erlzmq_nif_socket_command, ERL_NIF_DIRTY_JOB_IO_BOUND},
   // can block on zmq_term or context mutex
   {"term", 1, erlzmq_nif_term, ERL_NIF_DIRTY_JOB_IO_BOUND},
   // can block on context mutex
@@ -143,6 +148,19 @@ static ErlNifFunc nif_funcs[] =
   {"version", 0, erlzmq_nif_version, 0}
 };
 
+#define SOCKET_COMMANDS_COUNT 9
+static ERL_NIF_TERM (*socket_commands[SOCKET_COMMANDS_COUNT])(erlzmq_socket_t* socket, ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) = {
+  erlzmq_socket_command_bind,
+  erlzmq_socket_command_unbind,
+  erlzmq_socket_command_connect,
+  erlzmq_socket_command_disconnect,
+  erlzmq_socket_command_send,
+  erlzmq_socket_command_recv,
+  erlzmq_socket_command_setsockopt,
+  erlzmq_socket_command_getsockopt,
+  erlzmq_socket_command_close
+};
+
 NIF(erlzmq_nif_context)
 {
   int thread_count;
@@ -151,7 +169,7 @@ NIF(erlzmq_nif_context)
     return enif_make_badarg(env);
   }
 
-  erlzmq_context_t * context = enif_alloc_resource(erlzmq_nif_resource_context,
+  erlzmq_context_t * context = (erlzmq_context_t *)enif_alloc_resource(erlzmq_nif_resource_context,
                                                    sizeof(erlzmq_context_t));
   assert(context);
   context->status = ERLZMQ_CONTEXT_STATUS_TERMINATED;
@@ -191,14 +209,23 @@ NIF(erlzmq_nif_socket)
     return enif_make_badarg(env);
   }
 
-  erlzmq_socket_t * socket = enif_alloc_resource(erlzmq_nif_resource_socket,
+  erlzmq_socket_t * socket = (erlzmq_socket_t *)enif_alloc_resource(erlzmq_nif_resource_socket,
                                                  sizeof(erlzmq_socket_t));
   assert(socket);
   socket->context = context;
-  socket->mutex = 0;
-  socket->status = ERLZMQ_SOCKET_STATUS_CLOSED;
   socket->socket_zmq = 0;
+  socket->mutex = 0;
+  socket->socket_thread = 0;
+  socket->socket_command_mutex = 0;
+  socket->socket_command_cond = 0;
+  socket->socket_command_result_mutex = 0;
+  socket->socket_command_result_cond = 0;
+  socket->status = ERLZMQ_SOCKET_STATUS_CLOSED;
   socket->socket_type = socket_type;
+  clear_socket_command(socket);
+  socket->socket_command.env = env;
+
+  enif_keep_resource(socket->context);
 
   assert(context->mutex);
   enif_mutex_lock(context->mutex);
@@ -209,63 +236,126 @@ NIF(erlzmq_nif_socket)
   }
 
   socket->socket_index = context->socket_index++;
-  assert(context->context_zmq);
-  socket->socket_zmq = zmq_socket(context->context_zmq, socket_type);
   enif_mutex_unlock(context->mutex);
-  if (! socket->socket_zmq) {
+
+  char buffer[64];
+  
+  sprintf(buffer, "erlzmq_socket_t_mutex_%" PRIu64, socket->socket_index);
+  socket->mutex = enif_mutex_create(buffer);
+  assert(socket->mutex);
+
+  sprintf(buffer, "erlzmq_socket_t_socket_command_mutex_%" PRIu64, socket->socket_index);
+  socket->socket_command_mutex = enif_mutex_create(buffer);
+  assert(socket->socket_command_mutex);
+
+  sprintf(buffer, "erlzmq_socket_t_socket_command_cond_%" PRIu64, socket->socket_index);
+  socket->socket_command_cond = enif_cond_create(buffer);
+  assert(socket->socket_command_cond);
+
+  sprintf(buffer, "erlzmq_socket_t_socket_command_result_mutex_%" PRIu64, socket->socket_index);
+  socket->socket_command_result_mutex = enif_mutex_create(buffer);
+  assert(socket->socket_command_result_mutex);
+
+  sprintf(buffer, "erlzmq_socket_t_socket_command_result_cond_%" PRIu64, socket->socket_index);
+  socket->socket_command_result_cond = enif_cond_create(buffer);
+  assert(socket->socket_command_result_cond);
+
+  sprintf(buffer, "erlzmq_socket_t_thread_%" PRIu64, socket->socket_index);
+
+  enif_mutex_lock(socket->socket_command_result_mutex);
+
+  int value_errno = enif_thread_create(buffer, &socket->socket_thread, (void * (*)(void*))socket_thread, (void*)socket, NULL);
+  if (value_errno != 0) {
+    enif_mutex_unlock(socket->socket_command_result_mutex);
     enif_release_resource(socket);
-    return return_zmq_errno(env, zmq_errno());
+    return return_zmq_errno(env, value_errno);
+  }
+
+  enif_cond_wait(socket->socket_command_result_cond, socket->socket_command_result_mutex);
+
+  enif_mutex_unlock(socket->socket_command_result_mutex);
+
+  if (!socket->socket_zmq) {
+    enif_release_resource(socket);
+    return socket->socket_command_result;
   }
 
   socket->status = ERLZMQ_SOCKET_STATUS_READY;
-  char mutex_name[64];
-  sprintf(mutex_name, "erlzmq_socket_t_mutex_%" PRIu64, socket->socket_index);
-  socket->mutex = enif_mutex_create(mutex_name);
-  assert(socket->mutex);
-  enif_keep_resource(socket->context);
+  
+  
 
   return enif_make_tuple2(env, enif_make_atom(env, "ok"), enif_make_tuple2(env,
                           enif_make_uint64(env, socket->socket_index),
                           enif_make_resource(env, socket)));
 }
 
-NIF(erlzmq_nif_bind)
+NIF(erlzmq_nif_socket_command)
 {
   erlzmq_socket_t * socket;
-  unsigned endpoint_length;
-
   if (! enif_get_resource(env, argv[0], erlzmq_nif_resource_socket,
-                          (void **) &socket)) {
+                            (void **) &socket)) {
     return enif_make_badarg(env);
   }
 
-  if (! enif_get_list_length(env, argv[1], &endpoint_length)) {
+  int command_id;
+
+  if (! enif_get_int(env, argv[1], &command_id) || command_id < 0 || command_id >= SOCKET_COMMANDS_COUNT) {
     return enif_make_badarg(env);
   }
 
-  if (socket->context->status != ERLZMQ_CONTEXT_STATUS_READY) {
-    return return_zmq_errno(env, ETERM);
+  int command_argc;
+  const ERL_NIF_TERM* command_argv;
+
+  if (! enif_get_tuple(env, argv[2], &command_argc, &command_argv)) {
+    return enif_make_badarg(env);
   }
 
   if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
     return return_zmq_errno(env, ENOTSOCK);
+  }
+
+  enif_mutex_lock(socket->mutex);
+  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
+    enif_mutex_unlock(socket->mutex);
+    return return_zmq_errno(env, ENOTSOCK);
+  }
+
+  enif_mutex_lock(socket->socket_command_mutex);
+
+  socket->socket_command.name = socket_commands[command_id];
+  socket->socket_command.env = env;
+  socket->socket_command.argc = command_argc;
+  socket->socket_command.argv = command_argv;
+
+  enif_mutex_unlock(socket->socket_command_mutex);
+
+  enif_mutex_lock(socket->socket_command_result_mutex);
+  enif_cond_signal(socket->socket_command_cond);
+  
+  enif_cond_wait(socket->socket_command_result_cond, socket->socket_command_result_mutex);
+  ERL_NIF_TERM result = socket->socket_command_result;
+  enif_mutex_unlock(socket->socket_command_result_mutex);
+
+  enif_mutex_unlock(socket->mutex);
+
+  return result;
+}
+
+SOCKET_COMMAND(erlzmq_socket_command_bind)
+{
+  assert(argc == 1);
+  unsigned endpoint_length;
+
+  if (! enif_get_list_length(env, argv[0], &endpoint_length)) {
+    return enif_make_badarg(env);
   }
 
   char * endpoint = (char *) malloc(endpoint_length + 1);
   assert(endpoint);
-  if (! enif_get_string(env, argv[1], endpoint, endpoint_length + 1,
+  if (! enif_get_string(env, argv[0], endpoint, endpoint_length + 1,
                         ERL_NIF_LATIN1)) {
     free(endpoint);
     return enif_make_badarg(env);
-  }
-
-  assert(socket->mutex);
-  enif_mutex_lock(socket->mutex);
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    enif_mutex_unlock(socket->mutex);
-    free(endpoint);
-    return return_zmq_errno(env, ENOTSOCK);
   }
 
   ERL_NIF_TERM result;
@@ -277,49 +367,26 @@ NIF(erlzmq_nif_bind)
     result = enif_make_atom(env, "ok");
   }
 
-  enif_mutex_unlock(socket->mutex);
   free(endpoint);
 
   return result;
 }
 
-NIF(erlzmq_nif_unbind)
+SOCKET_COMMAND(erlzmq_socket_command_unbind)
 {
-  erlzmq_socket_t * socket;
+  assert(argc == 1);
   unsigned endpoint_length;
 
-  if (! enif_get_resource(env, argv[0], erlzmq_nif_resource_socket,
-                          (void **) &socket)) {
+  if (! enif_get_list_length(env, argv[0], &endpoint_length)) {
     return enif_make_badarg(env);
-  }
-
-  if (! enif_get_list_length(env, argv[1], &endpoint_length)) {
-    return enif_make_badarg(env);
-  }
-
-  if (socket->context->status != ERLZMQ_CONTEXT_STATUS_READY) {
-    return return_zmq_errno(env, ETERM);
-  }
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    return return_zmq_errno(env, ENOTSOCK);
   }
 
   char * endpoint = (char *) malloc(endpoint_length + 1);
   assert(endpoint);
-  if (! enif_get_string(env, argv[1], endpoint, endpoint_length + 1,
+  if (! enif_get_string(env, argv[0], endpoint, endpoint_length + 1,
                         ERL_NIF_LATIN1)) {
     free(endpoint);
     return enif_make_badarg(env);
-  }
-
-  assert(socket->mutex);
-  enif_mutex_lock(socket->mutex);
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    enif_mutex_unlock(socket->mutex);
-    free(endpoint);
-    return return_zmq_errno(env, ENOTSOCK);
   }
 
   ERL_NIF_TERM result;
@@ -331,48 +398,26 @@ NIF(erlzmq_nif_unbind)
     result = enif_make_atom(env, "ok");
   }
 
-  enif_mutex_unlock(socket->mutex);
   free(endpoint);
 
   return result;
 }
 
-NIF(erlzmq_nif_connect)
+SOCKET_COMMAND(erlzmq_socket_command_connect)
 {
-  erlzmq_socket_t * socket;
+  assert(argc == 1);
   unsigned endpoint_length;
 
-  if (! enif_get_resource(env, argv[0], erlzmq_nif_resource_socket,
-                          (void **) &socket)) {
+  if (! enif_get_list_length(env, argv[0], &endpoint_length)) {
     return enif_make_badarg(env);
-  }
-
-  if (! enif_get_list_length(env, argv[1], &endpoint_length)) {
-    return enif_make_badarg(env);
-  }
-
-  if (socket->context->status != ERLZMQ_CONTEXT_STATUS_READY) {
-    return return_zmq_errno(env, ETERM);
-  }
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    return return_zmq_errno(env, ENOTSOCK);
   }
 
   char * endpoint = (char *) malloc(endpoint_length + 1);
   assert(endpoint);
-  if (! enif_get_string(env, argv[1], endpoint, endpoint_length + 1,
+  if (! enif_get_string(env, argv[0], endpoint, endpoint_length + 1,
                         ERL_NIF_LATIN1)) {
     free(endpoint);
     return enif_make_badarg(env);
-  }
-
-  assert(socket->mutex);
-  enif_mutex_lock(socket->mutex);
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    enif_mutex_unlock(socket->mutex);
-    free(endpoint);
-    return return_zmq_errno(env, ENOTSOCK);
   }
 
   ERL_NIF_TERM result;
@@ -384,48 +429,26 @@ NIF(erlzmq_nif_connect)
     result = enif_make_atom(env, "ok");
   }
 
-  enif_mutex_unlock(socket->mutex);
   free(endpoint);
 
   return result;
 }
 
-NIF(erlzmq_nif_disconnect)
+SOCKET_COMMAND(erlzmq_socket_command_disconnect)
 {
-  erlzmq_socket_t * socket;
+  assert(argc == 1);
   unsigned endpoint_length;
 
-  if (! enif_get_resource(env, argv[0], erlzmq_nif_resource_socket,
-                          (void **) &socket)) {
+  if (! enif_get_list_length(env, argv[0], &endpoint_length)) {
     return enif_make_badarg(env);
-  }
-
-  if (! enif_get_list_length(env, argv[1], &endpoint_length)) {
-    return enif_make_badarg(env);
-  }
-
-  if (socket->context->status != ERLZMQ_CONTEXT_STATUS_READY) {
-    return return_zmq_errno(env, ETERM);
-  }
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    return return_zmq_errno(env, ENOTSOCK);
   }
 
   char * endpoint = (char *) malloc(endpoint_length + 1);
   assert(endpoint);
-  if (! enif_get_string(env, argv[1], endpoint, endpoint_length + 1,
+  if (! enif_get_string(env, argv[0], endpoint, endpoint_length + 1,
                         ERL_NIF_LATIN1)) {
     free(endpoint);
     return enif_make_badarg(env);
-  }
-
-  assert(socket->mutex);
-  enif_mutex_lock(socket->mutex);
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    enif_mutex_unlock(socket->mutex);
-    free(endpoint);
-    return return_zmq_errno(env, ENOTSOCK);
   }
 
   ERL_NIF_TERM result;
@@ -437,32 +460,18 @@ NIF(erlzmq_nif_disconnect)
     result = enif_make_atom(env, "ok");
   }
 
-  enif_mutex_unlock(socket->mutex);
   free(endpoint);
 
   return result;
 }
 
-NIF(erlzmq_nif_setsockopt)
+SOCKET_COMMAND(erlzmq_socket_command_setsockopt)
 {
-  erlzmq_socket_t * socket;
+  assert(argc == 2);
   int option_name;
 
-  if (! enif_get_resource(env, argv[0], erlzmq_nif_resource_socket,
-                          (void **) &socket)) {
+  if (! enif_get_int(env, argv[0], &option_name)) {
     return enif_make_badarg(env);
-  }
-
-  if (! enif_get_int(env, argv[1], &option_name)) {
-    return enif_make_badarg(env);
-  }
-
-  if (socket->context->status != ERLZMQ_CONTEXT_STATUS_READY) {
-    return return_zmq_errno(env, ETERM);
-  }
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    return return_zmq_errno(env, ENOTSOCK);
   }
 
   ErlNifUInt64 value_uint64;
@@ -481,7 +490,7 @@ NIF(erlzmq_nif_setsockopt)
     case ZMQ_VMCI_BUFFER_MIN_SIZE:
     case ZMQ_VMCI_BUFFER_MAX_SIZE:
     #endif
-      if (! enif_get_uint64(env, argv[2], &value_uint64)) {
+      if (! enif_get_uint64(env, argv[1], &value_uint64)) {
         return enif_make_badarg(env);
       }
       option_value = &value_uint64;
@@ -490,7 +499,7 @@ NIF(erlzmq_nif_setsockopt)
 
     // int64_t
     case ZMQ_MAXMSGSIZE:
-      if (! enif_get_int64(env, argv[2], &value_int64)) {
+      if (! enif_get_int64(env, argv[1], &value_int64)) {
         return enif_make_badarg(env);
       }
       option_value = &value_int64;
@@ -528,7 +537,7 @@ NIF(erlzmq_nif_setsockopt)
     case ZMQ_PLAIN_PASSWORD:
     case ZMQ_PLAIN_USERNAME:
     #endif
-      if (! enif_inspect_iolist_as_binary(env, argv[2], &value_binary)) {
+      if (! enif_inspect_iolist_as_binary(env, argv[1], &value_binary)) {
         return enif_make_badarg(env);
       }
       option_value = value_binary.data;
@@ -541,7 +550,7 @@ NIF(erlzmq_nif_setsockopt)
     case ZMQ_CURVE_SECRETKEY:
     case ZMQ_CURVE_SERVERKEY:
     #endif
-      if (! enif_inspect_iolist_as_binary(env, argv[2], &value_binary)) {
+      if (! enif_inspect_iolist_as_binary(env, argv[1], &value_binary)) {
         return enif_make_badarg(env);
       }
       if (value_binary.size == 32) {
@@ -624,7 +633,7 @@ NIF(erlzmq_nif_setsockopt)
 
     // deprecated
     case ZMQ_IPV4ONLY:
-      if (! enif_get_int(env, argv[2], &value_int)) {
+      if (! enif_get_int(env, argv[1], &value_int)) {
         return enif_make_badarg(env);
       }
       option_value = &value_int;
@@ -634,44 +643,23 @@ NIF(erlzmq_nif_setsockopt)
       return enif_make_badarg(env);
   }
 
-  assert(socket->mutex);
-  enif_mutex_lock(socket->mutex);
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    enif_mutex_unlock(socket->mutex);
-    return return_zmq_errno(env, ENOTSOCK);
-  }
   assert(socket->socket_zmq);
   if (zmq_setsockopt(socket->socket_zmq, option_name,
                           option_value, option_len)) {
-    enif_mutex_unlock(socket->mutex);
     return return_zmq_errno(env, zmq_errno());
   }
   else {
-    enif_mutex_unlock(socket->mutex);
     return enif_make_atom(env, "ok");
   }
 }
 
-NIF(erlzmq_nif_getsockopt)
+SOCKET_COMMAND(erlzmq_socket_command_getsockopt)
 {
-  erlzmq_socket_t * socket;
+  assert(argc == 1);
   int option_name;
 
-  if (! enif_get_resource(env, argv[0], erlzmq_nif_resource_socket,
-                          (void **) &socket)) {
+  if (! enif_get_int(env, argv[0], &option_name)) {
     return enif_make_badarg(env);
-  }
-
-  if (! enif_get_int(env, argv[1], &option_name)) {
-    return enif_make_badarg(env);
-  }
-
-  if (socket->context->status != ERLZMQ_CONTEXT_STATUS_READY) {
-    return return_zmq_errno(env, ETERM);
-  }
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    return return_zmq_errno(env, ENOTSOCK);
   }
 
   ErlNifBinary value_binary;
@@ -681,13 +669,6 @@ NIF(erlzmq_nif_getsockopt)
   int value_int;
   size_t option_len;
 
-  assert(socket->mutex);
-  enif_mutex_lock(socket->mutex);
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    enif_mutex_unlock(socket->mutex);
-    return return_zmq_errno(env, ENOTSOCK);
-  }
-
   switch(option_name) {
     // int64_t
     case ZMQ_MAXMSGSIZE:
@@ -695,10 +676,8 @@ NIF(erlzmq_nif_getsockopt)
       assert(socket->socket_zmq);
       if (zmq_getsockopt(socket->socket_zmq, option_name,
                               &value_int64, &option_len)) {
-        enif_mutex_unlock(socket->mutex);
         return return_zmq_errno(env, zmq_errno());
       }
-      enif_mutex_unlock(socket->mutex);
       return enif_make_tuple2(env, enif_make_atom(env, "ok"),
                               enif_make_int64(env, value_int64));
     // uint64_t
@@ -713,10 +692,8 @@ NIF(erlzmq_nif_getsockopt)
       assert(socket->socket_zmq);
       if (zmq_getsockopt(socket->socket_zmq, option_name,
                               &value_uint64, &option_len)) {
-        enif_mutex_unlock(socket->mutex);
         return return_zmq_errno(env, zmq_errno());
       }
-      enif_mutex_unlock(socket->mutex);
       return enif_make_tuple2(env, enif_make_atom(env, "ok"),
                               enif_make_uint64(env, value_uint64));
     // binary
@@ -752,10 +729,8 @@ NIF(erlzmq_nif_getsockopt)
       assert(socket->socket_zmq);
       if (zmq_getsockopt(socket->socket_zmq, option_name,
                               option_value, &option_len)) {
-        enif_mutex_unlock(socket->mutex);
         return return_zmq_errno(env, zmq_errno());
       }
-      enif_mutex_unlock(socket->mutex);
       int alloc_success = enif_alloc_binary(option_len, &value_binary);
       assert(alloc_success);
       memcpy(value_binary.data, option_value, option_len);
@@ -821,43 +796,27 @@ NIF(erlzmq_nif_getsockopt)
       assert(socket->socket_zmq);
       if (zmq_getsockopt(socket->socket_zmq, option_name,
                               &value_int, &option_len)) {
-        enif_mutex_unlock(socket->mutex);
         return return_zmq_errno(env, zmq_errno());
       }
-      enif_mutex_unlock(socket->mutex);
       return enif_make_tuple2(env, enif_make_atom(env, "ok"),
                               enif_make_int(env, value_int));
     default:
-      enif_mutex_unlock(socket->mutex);
       return enif_make_badarg(env);
   }
 }
 
-NIF(erlzmq_nif_send)
+SOCKET_COMMAND(erlzmq_socket_command_send)
 {
-  erlzmq_socket_t * socket;
+  assert(argc == 2);
   ErlNifBinary binary;
   int flags;
   zmq_msg_t msg;
 
-  if (! enif_get_resource(env, argv[0], erlzmq_nif_resource_socket,
-                          (void **) &socket)) {
+  if (! enif_inspect_iolist_as_binary(env, argv[0], &binary)) {
     return enif_make_badarg(env);
   }
 
-  if (socket->context->status != ERLZMQ_CONTEXT_STATUS_READY) {
-    return return_zmq_errno(env, ETERM);
-  }
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    return return_zmq_errno(env, ENOTSOCK);
-  }
-
-  if (! enif_inspect_iolist_as_binary(env, argv[1], &binary)) {
-    return enif_make_badarg(env);
-  }
-
-  if (! enif_get_int(env, argv[2], &flags)) {
+  if (! enif_get_int(env, argv[1], &flags)) {
     return enif_make_badarg(env);
   }
 
@@ -870,16 +829,6 @@ NIF(erlzmq_nif_send)
 
   memcpy(data, binary.data, binary.size);
 
-  assert(socket->mutex);
-  enif_mutex_lock(socket->mutex);
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    enif_mutex_unlock(socket->mutex);
-    const int ret = zmq_msg_close(&msg);
-    assert(ret == 0);
-    return return_zmq_errno(env, ENOTSOCK);
-  }
-
   ERL_NIF_TERM result;
   assert(socket->socket_zmq);
   if (zmq_sendmsg(socket->socket_zmq, &msg, flags) == -1) {
@@ -890,46 +839,23 @@ NIF(erlzmq_nif_send)
     result = enif_make_atom(env, "ok");
   }
 
-  enif_mutex_unlock(socket->mutex);
   const int ret = zmq_msg_close(&msg);
   assert(ret == 0);
   return result;
 }
 
-NIF(erlzmq_nif_recv)
+SOCKET_COMMAND(erlzmq_socket_command_recv)
 {
-  erlzmq_socket_t * socket;
+  assert(argc == 1);
   int flags;
 
-  if (! enif_get_resource(env, argv[0], erlzmq_nif_resource_socket,
-                          (void **) &socket)) {
+  if (! enif_get_int(env, argv[0], &flags)) {
     return enif_make_badarg(env);
-  }
-
-  if (! enif_get_int(env, argv[1], &flags)) {
-    return enif_make_badarg(env);
-  }
-
-  if (socket->context->status != ERLZMQ_CONTEXT_STATUS_READY) {
-    return return_zmq_errno(env, ETERM);
-  }
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    return return_zmq_errno(env, ENOTSOCK);
   }
 
   zmq_msg_t msg;
   if (zmq_msg_init(&msg)) {
     return return_zmq_errno(env, zmq_errno());
-  }
-
-  assert(socket->mutex);
-  enif_mutex_lock(socket->mutex);
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    enif_mutex_unlock(socket->mutex);
-    const int ret = zmq_msg_close(&msg);
-    assert(ret == 0);
-    return return_zmq_errno(env, ENOTSOCK);
   }
 
   ERL_NIF_TERM result;
@@ -951,48 +877,25 @@ NIF(erlzmq_nif_recv)
                             enif_make_binary(env, &binary));
   }
 
-  enif_mutex_unlock(socket->mutex);
   const int ret = zmq_msg_close(&msg);
   assert(ret == 0);
 
   return result;
 }
 
-NIF(erlzmq_nif_close)
+SOCKET_COMMAND(erlzmq_socket_command_close)
 {
-  erlzmq_socket_t * socket;
-
-  if (! enif_get_resource(env, argv[0], erlzmq_nif_resource_socket,
-                          (void **) &socket)) {
-    return enif_make_badarg(env);
-  }
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    return return_zmq_errno(env, ENOTSOCK);
-  }
-
-  assert(socket->mutex);
-  enif_mutex_lock(socket->mutex);
-
-  if (socket->status != ERLZMQ_SOCKET_STATUS_READY) {
-    enif_mutex_unlock(socket->mutex);
-    return return_zmq_errno(env, ENOTSOCK);
-  }
+  assert(argc == 0);
 
   if (zmq_close(socket->socket_zmq) != 0) {
     int const error = zmq_errno();
-    socket->status = ERLZMQ_SOCKET_STATUS_CLOSED;
-
-    enif_mutex_unlock(socket->mutex);
     return return_zmq_errno(env, error);
   }
   else {
+    socket->socket_zmq = 0;
     socket->status = ERLZMQ_SOCKET_STATUS_CLOSED;
 
-    enif_mutex_unlock(socket->mutex);
-
     enif_release_resource(socket);
-    enif_release_resource(socket->context);
 
     return enif_make_atom(env, "ok");
   }
@@ -1505,6 +1408,8 @@ static void context_destructor(ErlNifEnv * env, erlzmq_context_t * context) {
 }
 
 static void socket_destructor(ErlNifEnv * env, erlzmq_socket_t * socket) {
+  enif_release_resource(socket->context);
+
   if (socket->status != ERLZMQ_SOCKET_STATUS_CLOSED) {
     fprintf(stderr, "destructor reached for socket %" PRIu64 " while not closed\n", socket->socket_index);
     assert(0);
@@ -1513,6 +1418,35 @@ static void socket_destructor(ErlNifEnv * env, erlzmq_socket_t * socket) {
   if (socket->mutex) {
     enif_mutex_destroy(socket->mutex);
     socket->mutex = 0;
+  }
+
+  if (socket->socket_command_mutex) {
+    enif_mutex_destroy(socket->socket_command_mutex);
+    socket->socket_command_mutex = 0;
+  }
+
+  if (socket->socket_command_cond) {
+    enif_cond_destroy(socket->socket_command_cond);
+    socket->socket_command_cond = 0;
+  }
+
+  if (socket->socket_command_result_mutex) {
+    enif_mutex_destroy(socket->socket_command_result_mutex);
+    socket->socket_command_result_mutex = 0;
+  }
+
+  if (socket->socket_command_result_cond) {
+    enif_cond_destroy(socket->socket_command_result_cond);
+    socket->socket_command_result_cond = 0;
+  }
+
+  if (socket->socket_thread) {
+    int value_errno = enif_thread_join(socket->socket_thread, NULL);
+    if (value_errno != 0) {
+      fprintf(stderr, "unable to join socket thread %" PRIu64 ": %s\n", socket->socket_index, strerror(value_errno));
+      assert(0);
+    }
+    socket->socket_thread = 0;
   }
 }
 
@@ -1544,3 +1478,46 @@ static void on_unload(ErlNifEnv* env, void* priv_data) {
 
 ERL_NIF_INIT(erlzmq_nif, nif_funcs, &on_load, NULL, NULL, &on_unload)
 
+static void* socket_thread(erlzmq_socket_t *socket) {
+  enif_mutex_lock(socket->socket_command_mutex);
+  enif_mutex_lock(socket->socket_command_result_mutex);
+
+  socket->socket_zmq = zmq_socket(socket->context->context_zmq, socket->socket_type);
+  if (!socket->socket_zmq) {
+    int error = zmq_errno();
+    socket->socket_command_result = return_zmq_errno(socket->socket_command.env, error);
+    enif_mutex_unlock(socket->socket_command_result_mutex);
+    enif_cond_signal(socket->socket_command_result_cond);
+    enif_mutex_unlock(socket->socket_command_mutex);
+    return NULL;
+  }
+
+  enif_mutex_unlock(socket->socket_command_result_mutex);
+  enif_cond_signal(socket->socket_command_result_cond);
+  
+  while (1) {
+    enif_cond_wait(socket->socket_command_cond, socket->socket_command_mutex);
+
+    enif_mutex_lock(socket->socket_command_result_mutex);
+    socket->socket_command_result = socket->socket_command.name(socket,
+      socket->socket_command.env, socket->socket_command.argc, socket->socket_command.argv);
+    
+    enif_mutex_unlock(socket->socket_command_result_mutex);
+    enif_cond_signal(socket->socket_command_result_cond);
+
+    if (socket->status == ERLZMQ_SOCKET_STATUS_CLOSED) {
+      break;
+    }
+  }
+
+  enif_mutex_unlock(socket->socket_command_mutex);
+
+  return NULL;
+}
+
+static void clear_socket_command(erlzmq_socket_t *socket) {
+  socket->socket_command.env = 0;
+  socket->socket_command.argc = 0;
+  socket->socket_command.argv = 0;
+  socket->socket_command.name = 0;
+}
