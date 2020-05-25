@@ -134,6 +134,14 @@
 -define('ERLZMQ_SOCKET_COMMAND_SETSOCKOPT', 6).
 -define('ERLZMQ_SOCKET_COMMAND_GETSOCKOPT', 7).
 -define('ERLZMQ_SOCKET_COMMAND_CLOSE', 8).
+-define('ERLZMQ_SOCKET_COMMAND_POLL', 9).
+
+
+% ZMQ poll event flags
+-define('ZMQ_POLLIN', 1).
+-define('ZMQ_POLLOUT', 2).
+-define('ZMQ_POLLERR', 4).
+-define('ZMQ_POLLPRI', 8).
 %% Types
 
 %% Possible types for an erlzmq socket.<br />
@@ -188,7 +196,7 @@
 %% <i>For more information see
 %% <a href="http://api.zeromq.org/master:zmq_send">zmq_send</a> or
 %% <a href="http://api.zeromq.org/master:zmq_recv">zmq_recv</a></i>
--type erlzmq_send_recv_flag() :: dontwait | sndmore | recvmore | {timeout, timeout()}.
+-type erlzmq_send_recv_flag() :: dontwait | sndmore | recvmore.
 
 %% A list of flags to use with {@link ezqm:send/3. send/3} and
 %% {@link erlzmq:recv/2. recv/2}
@@ -318,3 +326,10 @@
     curve |
     gssapi |
     draft.
+
+%% 0MQ library poll event types {@link erlzmq:poll/2. poll/2}.
+-type erlzmq_poll_event() ::
+    pollin |
+    pollout |
+    pollerr |
+    pollpri.

@@ -109,6 +109,7 @@ SOCKET_COMMAND(erlzmq_socket_command_setsockopt);
 SOCKET_COMMAND(erlzmq_socket_command_getsockopt);
 SOCKET_COMMAND(erlzmq_socket_command_send);
 SOCKET_COMMAND(erlzmq_socket_command_recv);
+SOCKET_COMMAND(erlzmq_socket_command_poll);
 SOCKET_COMMAND(erlzmq_socket_command_close);
 NIF(erlzmq_nif_term);
 NIF(erlzmq_nif_ctx_get);
@@ -148,7 +149,7 @@ static ErlNifFunc nif_funcs[] = {
   {"version", 0, erlzmq_nif_version, 0}
 };
 
-#define SOCKET_COMMANDS_COUNT 9
+#define SOCKET_COMMANDS_COUNT 10
 static ERL_NIF_TERM (*socket_commands[SOCKET_COMMANDS_COUNT])(erlzmq_socket_t* socket, ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) = {
   erlzmq_socket_command_bind,
   erlzmq_socket_command_unbind,
@@ -158,7 +159,8 @@ static ERL_NIF_TERM (*socket_commands[SOCKET_COMMANDS_COUNT])(erlzmq_socket_t* s
   erlzmq_socket_command_recv,
   erlzmq_socket_command_setsockopt,
   erlzmq_socket_command_getsockopt,
-  erlzmq_socket_command_close
+  erlzmq_socket_command_close,
+  erlzmq_socket_command_poll
 };
 
 NIF(erlzmq_nif_context)
@@ -914,6 +916,40 @@ SOCKET_COMMAND(erlzmq_socket_command_recv)
 
   const int ret = zmq_msg_close(&msg);
   assert(ret == 0);
+
+  return result;
+}
+
+SOCKET_COMMAND(erlzmq_socket_command_poll)
+{
+  assert(argc == 2);
+  int flags;
+  long timeout;
+
+  if (! enif_get_int(env, argv[0], &flags)) {
+    return enif_make_badarg(env);
+  }
+
+  if (! enif_get_int64(env, argv[1], &timeout)) {
+    return enif_make_badarg(env);
+  }
+
+  ERL_NIF_TERM result;
+  zmq_pollitem_t items [1];
+
+  assert(socket->socket_zmq);
+  items[0].socket = socket->socket_zmq;
+  items[0].events = (short)flags;
+  fprintf(stderr, "calling zmq_poll\n");
+  int res = zmq_poll(items, 1, timeout);
+  if (res == -1) {
+    int const error = zmq_errno();
+    result = return_zmq_errno(env, error);
+  }
+  else {
+    result = enif_make_tuple2(env, enif_make_atom(env, "ok"),
+                            enif_make_int(env, items[0].revents));
+  }
 
   return result;
 }

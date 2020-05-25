@@ -43,6 +43,7 @@
          recv/2,
          recvmsg/1,
          recvmsg/2,
+         poll/3,
          setsockopt/3,
          getsockopt/2,
          close/1,
@@ -276,6 +277,25 @@ recvmsg(Socket) ->
 recvmsg(Socket, Flags) ->
     recv(Socket, Flags).
 
+
+%% @doc Allows multiplexing input output over 1 socket.
+%% Unlike zmq version only 1 socket is supported
+%% <br />
+%% <i>For more information see
+%% <a href="http://api.zeromq.org/master:zmq_poll">zmq_poll</a>.</i>
+%% @end
+-spec poll(erlzmq_socket(),
+           Flags :: [erlzmq_poll_event()], Timeout :: integer()) ->
+    {ok, [erlzmq_poll_event()]} |
+    erlzmq_error().
+poll({I, Socket}, Flags, Timeout)
+    when is_integer(I), is_list(Flags) ->
+    case erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_POLL, {poll_flags(Flags), Timeout}) of
+        {ok, RFlags} ->
+            {ok, parse_poll_flags(RFlags)};
+        Other -> Other
+    end.
+
 %% @doc Set an {@link erlzmq_sockopt(). option} associated with a socket.
 %% <br />
 %% <i>For more information see
@@ -456,6 +476,37 @@ sendrecv_flags([dontwait|Rest]) ->
     ?'ZMQ_DONTWAIT' bor sendrecv_flags(Rest);
 sendrecv_flags([sndmore|Rest]) ->
     ?'ZMQ_SNDMORE' bor sendrecv_flags(Rest).
+
+-spec poll_flags(Flags :: [erlzmq_poll_event()]) ->
+    integer().
+
+poll_flags([]) ->
+    0;
+poll_flags([pollin|Rest]) ->
+    ?'ZMQ_POLLIN' bor poll_flags(Rest);
+poll_flags([pollout|Rest]) ->
+    ?'ZMQ_POLLOUT' bor poll_flags(Rest);
+poll_flags([pollerr|Rest]) ->
+    ?'ZMQ_POLLERR' bor poll_flags(Rest);
+poll_flags([pollpri|Rest]) ->
+    ?'ZMQ_POLLPRI' bor poll_flags(Rest).
+
+-spec parse_poll_flags(integer()) -> [erlzmq_poll_event()].
+
+parse_poll_flags(Flags) ->
+    Dictionary = [
+        {?'ZMQ_POLLIN', pollin},
+        {?'ZMQ_POLLOUT', pollout},
+        {?'ZMQ_POLLERR', pollerr},
+        {?'ZMQ_POLLPRI', pollpri}
+    ],
+    io:format(standard_error, "~p~n", [Flags]),
+    lists:foldl(fun ({FlagInt, Flag}, Acc) ->
+        case FlagInt band Flags of
+            0 -> Acc;
+            _ -> [Flag | Acc]
+        end
+    end, [], Dictionary).
 
 -spec option_name(Name :: erlzmq_sockopt() | erlzmq_ctxopt()) ->
     integer().
