@@ -500,7 +500,6 @@ parse_poll_flags(Flags) ->
         {?'ZMQ_POLLERR', pollerr},
         {?'ZMQ_POLLPRI', pollpri}
     ],
-    io:format(standard_error, "~p~n", [Flags]),
     lists:foldl(fun ({FlagInt, Flag}, Acc) ->
         case FlagInt band Flags of
             0 -> Acc;
