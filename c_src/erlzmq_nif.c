@@ -940,7 +940,7 @@ SOCKET_COMMAND(erlzmq_socket_command_poll)
   assert(socket->socket_zmq);
   items[0].socket = socket->socket_zmq;
   items[0].events = (short)flags;
-  fprintf(stderr, "calling zmq_poll\n");
+
   int res = zmq_poll(items, 1, timeout);
   if (res == -1) {
     int const error = zmq_errno();
