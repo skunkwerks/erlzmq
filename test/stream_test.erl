@@ -1,9 +1,9 @@
 -module(stream_test).
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("erlzmq.hrl").
--export_type([erlzmq_socket/0, erlzmq_context/0]).                          
+-export_type([erlzmq_socket/0, erlzmq_context/0]).
 
-stream_to_stream_test() ->
+run_stream_to_stream() ->
     {ok, C} = erlzmq:context(),
     Endpoint = "tcp://127.0.0.1:7432",
 
@@ -52,3 +52,10 @@ stream_to_stream_test() ->
     ok = erlzmq:close(From),
     ok = erlzmq:close(To),
     ok = erlzmq:term(C).
+
+stream_to_stream_test() ->
+    case erlzmq:version() of
+        {Major, Minor, _Patch} when Major > 4 orelse major == 4 andalso Minor >= 2 ->
+            run_stream_to_stream();
+        _ -> ok
+    end.
