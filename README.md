@@ -1,6 +1,6 @@
 [![Build Status](https://travis-ci.com/lukaszsamson/erlzmq.svg?branch=master)](https://travis-ci.com/lukaszsamson/erlzmq)
 
-erlzmq
+erlzmq_dnif
 =======
 Dirty NIF based Erlang bindings for the ZeroMQ messaging library.
 
@@ -23,7 +23,7 @@ bindings for the ZeroMQ messaging library.
 Downloading
 -----------
 
-The erlzmq source code can be found on
+The erlzmq_dnif source code can be found on
 [GitHub](https://github.com/lukaszsamson/erlzmq)
 
     $ git clone http://github.com/lukaszsamson/erlzmq.git
