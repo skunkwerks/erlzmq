@@ -46,15 +46,15 @@ linger_infinite_test() ->
 
 linger_finite_receive_before_test() ->
     {ok, C} = erlzmq:context(),
-    Endpoint = "tcp://127.0.0.1:5558",
+    Endpoint = "tcp://127.0.0.1:6558",
 
     {ok, From} = erlzmq:socket(C, push),
-    ok = erlzmq:setsockopt(From, linger, 200),
+    ok = erlzmq:setsockopt(From, linger, 500),
     ok = erlzmq:connect(From, Endpoint),
 
     ok = erlzmq:send(From, <<>>),
     ok = erlzmq:close(From),
-    timer:sleep(100),
+    timer:sleep(200),
 
     {ok, To} = erlzmq:socket(C, pull),
     ok = erlzmq:bind(To, Endpoint),
@@ -66,7 +66,7 @@ linger_finite_receive_before_test() ->
 
 linger_finite_receive_after_test() ->
     {ok, C} = erlzmq:context(),
-    Endpoint = "tcp://127.0.0.1:5558",
+    Endpoint = "tcp://127.0.0.1:6658",
 
     {ok, From} = erlzmq:socket(C, push),
     ok = erlzmq:setsockopt(From, linger, 200),
