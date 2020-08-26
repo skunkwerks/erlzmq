@@ -33,7 +33,7 @@ timeo() ->
     {Elapsed1, _} = timer:tc(fun() ->
                                      ?assertMatch({error, eagain}, erlzmq:recv(Sb))
                              end),
-    ?assert(Elapsed1 > 1900000 andalso Elapsed1 < 2100000),
+    ?assert(Elapsed1 > 1900000 andalso Elapsed1 < 2300000),
 
     %%  Check that timeouts don't break normal message transfer.
     {ok, Sc} = erlzmq:socket(Ctx, dealer),
