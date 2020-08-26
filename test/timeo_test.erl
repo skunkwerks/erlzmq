@@ -17,7 +17,7 @@ timeo() ->
         timer:tc(fun() ->
                          ?assertMatch({error, eagain}, erlzmq:recv(Sb))
                  end),
-    ?assert(Elapsed0 > 440000 andalso Elapsed0 < 550000),
+    ?assert(Elapsed0 > 400000 andalso Elapsed0 < 600000),
 
     %%  Check whether connection during the wait doesn't distort the timeout.
     Timeout1 = 2000,
