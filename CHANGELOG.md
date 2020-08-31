@@ -1,0 +1,35 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [4.1.0] - 2020-08-31
+
+### Added
+
+- Send/recive multipart messages in one call [Stefan Kaes](https://github.com/skaes).
+
+## [4.0.0] - 2020-08-26
+
+### Added
+
+- Support for recent libzmq socket flags (up to 4.3.2)
+- Support for libzmq context flags (up to 4.3.2)
+- Support for zmq CURVE security
+- Support for z85 encoding/decoding
+
+### Changed
+
+- Multiple resource leaks fixed plugged
+- Uses one thread per socket instead of one thread per context
+- Made sure sockets are accessed only from one thread that creatd them
+- Uses dirty IO NIF
+- Fixes semantics of various libzmq flags with regards to blocking, reliability quaranties, etc.
+
+### Removed
+
+- Active sockets support
