@@ -703,6 +703,7 @@ SOCKET_COMMAND(erlzmq_socket_command_getsockopt)
   char option_value[256];
   int value_int;
   size_t option_len;
+  int alloc_success;
 
   switch(option_name) {
     // int64_t
@@ -766,7 +767,7 @@ SOCKET_COMMAND(erlzmq_socket_command_getsockopt)
                               option_value, &option_len)) {
         return return_zmq_errno(env, zmq_errno());
       }
-      int alloc_success = enif_alloc_binary(option_len, &value_binary);
+      alloc_success = enif_alloc_binary(option_len, &value_binary);
       if (!alloc_success) {
         return return_zmq_errno(env, ENOMEM);
       }
@@ -908,7 +909,7 @@ SOCKET_COMMAND(erlzmq_socket_command_send_multipart)
   }
 
   enif_get_list_cell(env, argv[0], &head, &tail);
-  for (int i = 0; i<n; i++) {
+  for (unsigned int i = 0; i < n; i++) {
     ErlNifBinary binary;
     if (! enif_inspect_binary(env, head, &binary)) {
       result = enif_make_badarg(env);
@@ -928,8 +929,8 @@ SOCKET_COMMAND(erlzmq_socket_command_send_multipart)
     enif_get_list_cell(env, tail, &head, &tail);
   }
 
-  for (int i = 0; i < n;) {
-    int sndmore = (i < n-1) ? ZMQ_SNDMORE : 0;
+  for (unsigned int i = 0; i < n;) {
+    int sndmore = (i < n - 1) ? ZMQ_SNDMORE : 0;
     if (zmq_sendmsg(socket->socket_zmq, &msg[i], flags|sndmore) == -1) {
       if (zmq_errno() == EINTR && i>0)
         continue;
