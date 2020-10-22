@@ -1090,6 +1090,7 @@ SOCKET_COMMAND(erlzmq_socket_command_poll)
 SOCKET_COMMAND(erlzmq_socket_command_close)
 {
   assert(argc == 0);
+  assert(socket->socket_zmq);
 
   if (zmq_close(socket->socket_zmq) != 0) {
     int const error = zmq_errno();
