@@ -4,15 +4,6 @@
 -export([context/1,
          socket/2,
          socket_command/3,
-        %  bind/2,
-        %  unbind/2,
-        %  connect/2,
-        %  disconnect/2,
-        %  send/3,
-        %  recv/2,
-        %  setsockopt/3,
-        %  getsockopt/2,
-        %  close/1,
          term/1,
          ctx_get/2,
          ctx_set/3,
@@ -49,33 +40,6 @@ socket(_Context, _Type) ->
 
 socket_command(_Socket, _Command, _Args) ->
     erlang:nif_error(not_loaded).
-
-% bind(_Socket, _Endpoint) ->
-%     erlang:nif_error(not_loaded).
-
-% unbind(_Socket, _Endpoint) ->
-%     erlang:nif_error(not_loaded).
-
-% connect(_Socket, _Endpoint) ->
-%     erlang:nif_error(not_loaded).
-
-% disconnect(_Socket, _Endpoint) ->
-%     erlang:nif_error(not_loaded).
-
-% send(_Socket, _Binary, _Flags) ->
-%     erlang:nif_error(not_loaded).
-
-% recv(_Socket, _Flags) ->
-%     erlang:nif_error(not_loaded).
-
-% setsockopt(_Socket, _OptionName, _OptionValue) ->
-%     erlang:nif_error(not_loaded).
-
-% getsockopt(_Socket, _OptionName) ->
-%     erlang:nif_error(not_loaded).
-
-% close(_Socket) ->
-%     erlang:nif_error(not_loaded).
 
 term(_Context) ->
     erlang:nif_error(not_loaded).

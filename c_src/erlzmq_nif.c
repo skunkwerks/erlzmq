@@ -911,7 +911,7 @@ SOCKET_COMMAND(erlzmq_socket_command_send_multipart)
   enif_get_list_cell(env, argv[0], &head, &tail);
   for (unsigned int i = 0; i < n; i++) {
     ErlNifBinary binary;
-    if (! enif_inspect_binary(env, head, &binary)) {
+    if (! enif_inspect_iolist_as_binary(env, head, &binary)) {
       result = enif_make_badarg(env);
       goto cleanup;
     }
