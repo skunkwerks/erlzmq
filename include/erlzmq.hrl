@@ -183,9 +183,9 @@
 %% Error tuples returned by most API functions.
 -type erlzmq_error() :: {error, erlzmq_error_type()}.
 
-%% Data to be sent with {@link erlzmq:send/3. send/3} or received with
+%% Data to be received with
 %% {@link erlzmq:recv/2. recv/2}
--type erlzmq_data() :: iolist().
+-type erlzmq_data() :: binary().
 
 %% An opaque handle to an erlzmq context.
 -opaque erlzmq_context() :: binary().

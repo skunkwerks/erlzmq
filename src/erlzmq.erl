@@ -188,10 +188,10 @@ disconnect({I, Socket}, Endpoint)
 
 %% @equiv send(Socket, Msg, [])
 -spec send(erlzmq_socket(),
-           Binary :: binary()) ->
+           Binary :: iolist()) ->
     ok |
     erlzmq_error().
-send(Socket, Binary) when is_binary(Binary) ->
+send(Socket, Binary) ->
     send(Socket, Binary, []).
 
 %% @doc Send a message on a socket.
@@ -200,18 +200,18 @@ send(Socket, Binary) when is_binary(Binary) ->
 %% <a href="http://api.zeromq.org/master:zmq_send">zmq_send</a>.</i>
 %% @end
 -spec send(erlzmq_socket(),
-           Binary :: binary(),
+           Binary :: iolist(),
            Flags :: erlzmq_send_recv_flags()) ->
     ok |
     erlzmq_error().
 send({I, Socket}, Binary, Flags)
-    when is_integer(I), is_binary(Binary), is_list(Flags) ->
+    when is_integer(I), is_list(Flags) ->
     erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_SEND, {Binary, sendrecv_flags(Flags)}).
 
 
 %% @equiv send_multipart(Socket, Parts, [])
 -spec send_multipart(erlzmq_socket(),
-           Parts :: list(binary())) ->
+           Parts :: list(iolist())) ->
     ok |
     erlzmq_error().
 send_multipart(Socket, Parts) ->
@@ -220,7 +220,7 @@ send_multipart(Socket, Parts) ->
 %% @doc Send a multi part message on a socket.
 %% @end
 -spec send_multipart(erlzmq_socket(),
-           Parts :: list(binary()),
+           Parts :: list(iolist()),
            Flags :: erlzmq_send_recv_flags()) ->
     ok |
     erlzmq_error().
@@ -235,10 +235,10 @@ send_multipart({I, Socket}, Parts, Flags)
 %% calls that function. So there is a slight bit of additional
 %% overhead as well.
 -spec sendmsg(erlzmq_socket(),
-           Binary :: binary()) ->
+           Binary :: iolist()) ->
     ok |
     erlzmq_error().
-sendmsg(Socket, Binary) when is_binary(Binary) ->
+sendmsg(Socket, Binary) ->
     send(Socket, Binary, []).
 
 %% @equiv send(Socket, Msg, Flags)
@@ -248,7 +248,7 @@ sendmsg(Socket, Binary) when is_binary(Binary) ->
 %% calls that function. So there is a slight bit of additional
 %% overhead as well.
 -spec sendmsg(erlzmq_socket(),
-           Binary :: binary(),
+           Binary :: iolist(),
            Flags :: erlzmq_send_recv_flags()) ->
     ok |
     erlzmq_error().
@@ -343,11 +343,9 @@ poll({I, Socket}, Flags, Timeout)
 %% @end
 -spec setsockopt(erlzmq_socket(),
                  Name :: erlzmq_sockopt(),
-                 erlzmq_sockopt_value() | binary()) ->
+                 erlzmq_sockopt_value()) ->
     ok |
     erlzmq_error().
-setsockopt(Socket, Name, Value) when is_list(Value) ->
-    setsockopt(Socket, Name, erlang:list_to_binary(Value));
 setsockopt({I, Socket}, Name, Value) when is_integer(I), is_atom(Name) ->
     erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_SETSOCKOPT, {option_name(Name), Value}).
 
@@ -428,27 +426,27 @@ ctx_set(Context, Name, Value) when is_integer(Value), is_atom(Name) ->
 curve_keypair() ->
     erlzmq_nif:curve_keypair().
 
-%% @doc Decode a Z85-encode binary
+%% @doc Decode a Z85-encoded iolist
 %% <br />
 %% This will take a binary of size 5*n, and return a binary of size 4*n.
 %% <br />
 %% <i>For more information see
 %% <a href="http://api.zeromq.org/master:zmq-z85-decode">zmq_z85_decode</a>.</i>
 %% @end
--spec z85_decode(binary()) ->
+-spec z85_decode(iolist()) ->
     {ok, binary()} |
     erlzmq_error().
 z85_decode(Z85) ->
     erlzmq_nif:z85_decode(Z85).
 
-%% @doc Encode a binary into Z85
+%% @doc Encode an iolist into Z85
 %% <br />
 %% This will take a binary of size 4*n, and return a binary of size 5*n.
 %% <br />
 %% <i>For more information see
 %% <a href="http://api.zeromq.org/master:zmq-z85-encode">zmq_z85_encode</a>.</i>
 %% @end
--spec z85_encode(binary()) ->
+-spec z85_encode(iolist()) ->
     {ok, binary()} |
     erlzmq_error().
 z85_encode(Binary) ->
