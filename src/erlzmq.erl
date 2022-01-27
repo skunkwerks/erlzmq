@@ -47,6 +47,8 @@
          recvmsg/2,
          recv_multipart/1,
          recv_multipart/2,
+         recv_active/3,
+         recv_active/4,
          poll/3,
          setsockopt/3,
          getsockopt/2,
@@ -317,6 +319,12 @@ recvmsg(Socket) ->
 recvmsg(Socket, Flags) ->
     recv(Socket, Flags).
 
+recv_active(Socket, ToPid, Number) ->
+    recv_active(Socket, ToPid, Number, []).
+
+recv_active({I, Socket}, ToPid, Number, Flags)
+    when is_integer(I), is_pid(ToPid), is_list(Flags) ->
+    erlzmq_nif:socket_command(Socket, ?ERLZMQ_SOCKET_COMMAND_RECV_ACTIVE, {ToPid, Number, sendrecv_flags(Flags)}).
 
 %% @doc Allows multiplexing input output over 1 socket.
 %% Unlike zmq version only 1 socket is supported
