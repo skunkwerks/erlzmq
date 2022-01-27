@@ -1093,7 +1093,7 @@ SOCKET_COMMAND(erlzmq_socket_command_recv_active)
           zmq_msg_close(&msg);
           continue;
         }
-        // TODO fall back to outer loop?
+
         enif_free_env(msg_env);
         return return_zmq_errno(env, zmq_errno());
       }
@@ -1142,6 +1142,7 @@ SOCKET_COMMAND(erlzmq_socket_command_recv_active)
                             enif_make_atom(env, "noproc"));
     }
   }
+  enif_free_env(msg_env);
   return enif_make_atom(env, "ok");
 }
 
