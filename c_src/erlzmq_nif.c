@@ -1027,18 +1027,21 @@ SOCKET_COMMAND(erlzmq_socket_command_recv_multipart)
     ErlNifBinary binary;
     int alloc_success = enif_alloc_binary(msg_size, &binary);
     if (!alloc_success) {
-      zmq_msg_close(&msg);
+      const int ret = zmq_msg_close(&msg);
+      assert(ret == 0);
       return return_zmq_errno(env, ENOMEM);
     }
     void * data = zmq_msg_data(&msg);
     if (! data) {
-      zmq_msg_close(&msg);
+      const int ret = zmq_msg_close(&msg);
+      assert(ret == 0);
       return return_zmq_errno(env, ENOMEM);
     }
     memcpy(binary.data, data, msg_size);
     list = enif_make_list_cell(env, enif_make_binary(env, &binary), list);
 
-    zmq_msg_close(&msg);
+    const int ret = zmq_msg_close(&msg);
+    assert(ret == 0);
 
     int rcvmore;
     size_t len = sizeof(int);
@@ -1103,20 +1106,23 @@ SOCKET_COMMAND(erlzmq_socket_command_recv_active)
       ErlNifBinary binary;
       int alloc_success = enif_alloc_binary(msg_size, &binary);
       if (!alloc_success) {
-        zmq_msg_close(&msg);
+        const int ret = zmq_msg_close(&msg);
+        assert(ret == 0);
         enif_free_env(msg_env);
         return return_zmq_errno(env, ENOMEM);
       }
       void * data = zmq_msg_data(&msg);
       if (! data) {
-        zmq_msg_close(&msg);
+        const int ret = zmq_msg_close(&msg);
+        assert(ret == 0);
         enif_free_env(msg_env);
         return return_zmq_errno(env, ENOMEM);
       }
       memcpy(binary.data, data, msg_size);
       list = enif_make_list_cell(msg_env, enif_make_binary(msg_env, &binary), list);
 
-      zmq_msg_close(&msg);
+      const int ret = zmq_msg_close(&msg);
+      assert(ret == 0);
 
       int rcvmore;
       size_t len = sizeof(int);
