@@ -875,7 +875,7 @@ SOCKET_COMMAND(erlzmq_socket_command_send)
 
   ERL_NIF_TERM result;
   assert(socket->socket_zmq);
-  if (zmq_sendmsg(socket->socket_zmq, &msg, flags) == -1) {
+  if (zmq_msg_send(&msg, socket->socket_zmq, flags) == -1) {
     int const error = zmq_errno();
     result = return_zmq_errno(env, error);
   }
@@ -973,7 +973,7 @@ SOCKET_COMMAND(erlzmq_socket_command_recv)
   ERL_NIF_TERM result;
 
   assert(socket->socket_zmq);
-  if (zmq_recvmsg(socket->socket_zmq, &msg, flags) == -1) {
+  if (zmq_msg_recv(&msg, socket->socket_zmq, flags) == -1) {
     int const error = zmq_errno();
     result = return_zmq_errno(env, error);
   }
@@ -1018,7 +1018,7 @@ SOCKET_COMMAND(erlzmq_socket_command_recv_multipart)
       return return_zmq_errno(env, zmq_errno());
     }
 
-    if (zmq_recvmsg(socket->socket_zmq, &msg, flags) == -1) {
+    if (zmq_msg_recv(&msg, socket->socket_zmq, flags) == -1) {
       if (zmq_errno() == EINTR && i > 0) {
         zmq_msg_close(&msg);
         continue;
@@ -1096,7 +1096,7 @@ SOCKET_COMMAND(erlzmq_socket_command_recv_active)
         return return_zmq_errno(env, zmq_errno());
       }
 
-      if (zmq_recvmsg(socket->socket_zmq, &msg, flags) == -1) {
+      if (zmq_msg_recv(&msg, socket->socket_zmq, flags) == -1) {
         if (zmq_errno() == EINTR && i > 0) {
           zmq_msg_close(&msg);
           continue;
