@@ -986,7 +986,12 @@ SOCKET_COMMAND(erlzmq_socket_command_recv)
       return return_zmq_errno(env, ENOMEM);
     }
     void * data = zmq_msg_data(&msg);
-    assert(data);
+    if (! data) {
+      enif_release_binary(&binary);
+      const int ret = zmq_msg_close(&msg);
+      assert(ret == 0);
+      return return_zmq_errno(env, ENOMEM);
+    }
     memcpy(binary.data, data, zmq_msg_size(&msg));
 
     result = enif_make_tuple2(env, enif_make_atom(env, "ok"),
@@ -1019,8 +1024,9 @@ SOCKET_COMMAND(erlzmq_socket_command_recv_multipart)
     }
 
     if (zmq_msg_recv(&msg, socket->socket_zmq, flags) == -1) {
+      const int ret = zmq_msg_close(&msg);
+      assert(ret == 0);
       if (zmq_errno() == EINTR && i > 0) {
-        zmq_msg_close(&msg);
         continue;
       }
       return return_zmq_errno(env, zmq_errno());
@@ -1097,8 +1103,9 @@ SOCKET_COMMAND(erlzmq_socket_command_recv_active)
       }
 
       if (zmq_msg_recv(&msg, socket->socket_zmq, flags) == -1) {
+        const int ret = zmq_msg_close(&msg);
+        assert(ret == 0);
         if (zmq_errno() == EINTR && i > 0) {
-          zmq_msg_close(&msg);
           continue;
         }
 
