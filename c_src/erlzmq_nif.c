@@ -877,14 +877,15 @@ SOCKET_COMMAND(erlzmq_socket_command_send)
   assert(socket->socket_zmq);
   if (zmq_msg_send(&msg, socket->socket_zmq, flags) == -1) {
     int const error = zmq_errno();
+    const int ret = zmq_msg_close(&msg);
+    assert(ret == 0);
     result = return_zmq_errno(env, error);
   }
   else {
+    // You do not need to call zmq_msg_close() after a successful zmq_msg_send().
     result = enif_make_atom(env, "ok");
   }
-
-  const int ret = zmq_msg_close(&msg);
-  assert(ret == 0);
+  
   return result;
 }
 
