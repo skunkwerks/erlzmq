@@ -865,7 +865,11 @@ SOCKET_COMMAND(erlzmq_socket_command_send)
   }
 
   void * data = zmq_msg_data(&msg);
-  assert(data);
+  if (! data) {
+    const int ret = zmq_msg_close(&msg);
+    assert(ret == 0);
+    return return_zmq_errno(env, ENOMEM);
+  }
 
   memcpy(data, binary.data, binary.size);
 
