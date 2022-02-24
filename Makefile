@@ -1,28 +1,11 @@
-REBAR=rebar
+all: check
 
-all: compile
+build:
+	@rebar3 compile
 
-compile:
-	@$(REBAR) compile
-
-perftest: compile
-	@cd perf && erlc erlzmq_perf.erl
+check: build
+	@rebar3 eunit
 
 clean:
-	@$(REBAR) clean
-
-distclean: clean
-	@cd c_src;make distclean
-
-test: compile
-	@$(REBAR) eunit
-
-docs:
-	@$(REBAR) doc
-
-bench: perftest
-	@echo 'Running benchmarks, this could take some time...'
-	@mkdir -p graphs
-	@./perf/perfgraphs.py
-	@mv -f *.png graphs/
-
+	@rebar3 clean
+	@rm -rf _build
